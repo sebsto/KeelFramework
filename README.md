@@ -128,8 +128,8 @@ make smoke       # invoke bootstrap/ping/stats against a running `make local`
 make docs        # verify the mermaid diagrams in docs/ parse
 ```
 
-Requires Swift 6.2+ (Xcode 26+), Node 20+, and the `aarch64-swift-linux-musl` Swift SDK for
-Lambda builds.
+Requires Swift 6.2+ (Xcode 26+), Node 20+, and Apple's
+[container](https://github.com/apple/container) CLI (or Docker) for Lambda builds.
 
 ## Status
 

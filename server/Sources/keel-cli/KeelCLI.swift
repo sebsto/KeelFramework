@@ -48,11 +48,11 @@ struct TableOptions: ParsableArguments {
     ) async throws -> T {
         let client = AWSClient()
         let resolvedRegion: Region? =
-            if let region { Region(awsRegionName: region) }
-            else if let env = ProcessInfo.processInfo.environment["AWS_REGION"] ??
-                ProcessInfo.processInfo.environment["AWS_DEFAULT_REGION"]
-            { Region(awsRegionName: env) }
-            else { nil }
+            if let region {
+                Region(awsRegionName: region)
+            } else if let env = ProcessInfo.processInfo.environment["AWS_REGION"]
+                ?? ProcessInfo.processInfo.environment["AWS_DEFAULT_REGION"]
+            { Region(awsRegionName: env) } else { nil }
         let dynamoDB = DynamoDB(client: client, region: resolvedRegion)
         do {
             let result = try await body(
