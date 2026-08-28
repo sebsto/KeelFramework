@@ -1,0 +1,14 @@
+{
+  "firstPingEver": true,
+  "firstToday": true,
+  "firstThisMonth": true,
+  "firstThisVersion": true,
+  "firstPaidLaunch": false,
+  "appVersion": "2.1.0",
+  "osVersion": "26.1",
+  "platform": "ios",
+  "licenseState": "free",
+  "dimensions": {
+    "profiles": "3-5"
+  }
+}

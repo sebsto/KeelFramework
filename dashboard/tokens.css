@@ -1,0 +1,42 @@
+/*
+ * Keel dashboard — brand tokens. This file is the whole restyling surface:
+ * replace it (or override the variables after it) and every chart, bar, and
+ * card follows. Nothing in stats.js names a color; it reads these via
+ * getComputedStyle, so dark/light mode is a media query here and nowhere else.
+ */
+:root {
+  /* The one accent. Used for the hero figure, the lit series, and the leading bar. */
+  --accent: #d97706;
+
+  /* Cohort lanes. Paid is the accent — it is the series the chart exists for. */
+  --cohort-free: #9ca3af;
+  --cohort-trial: #60a5fa;
+  --cohort-paid: var(--accent);
+
+  /* Quiet columns and bar fills that are not the leader. */
+  --muted: #d1d5db;
+
+  /* Surfaces and text. */
+  --bg: #ffffff;
+  --surface: #f9fafb;
+  --hairline: #e5e7eb;
+  --text-1: #111827;
+  --text-2: #6b7280;
+
+  --font-text: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #f59e0b;
+    --cohort-free: #6b7280;
+    --cohort-trial: #3b82f6;
+    --muted: #374151;
+    --bg: #0b0f14;
+    --surface: #111827;
+    --hairline: #1f2937;
+    --text-1: #f9fafb;
+    --text-2: #9ca3af;
+  }
+}

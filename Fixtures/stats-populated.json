@@ -1,0 +1,46 @@
+{
+  "generatedAt": "2026-08-24T10:00:00Z",
+  "installs": 4821,
+  "conversions": 613,
+  "dau": [
+    { "date": "2026-08-22", "count": 341 },
+    { "date": "2026-08-23", "count": 0 },
+    { "date": "2026-08-24", "count": 298 }
+  ],
+  "dauByState": [
+    { "date": "2026-08-22", "free": 260, "trial": 19, "paid": 62 },
+    { "date": "2026-08-23", "free": 0, "trial": 0, "paid": 0 },
+    { "date": "2026-08-24", "free": 221, "trial": 14, "paid": 63 }
+  ],
+  "mau": [
+    { "month": "2026-07", "count": 2104 },
+    { "month": "2026-08", "count": 1877 }
+  ],
+  "mauByState": [
+    { "month": "2026-07", "free": 1690, "trial": 87, "paid": 327 },
+    { "month": "2026-08", "free": 1502, "trial": 62, "paid": 313 }
+  ],
+  "versions": [
+    { "version": "2.1.0", "count": 1502 },
+    { "version": "2.0.3", "count": 288 },
+    { "version": "1.4.0", "count": 87 }
+  ],
+  "osVersions": [
+    { "osVersion": "26.1", "count": 1344 },
+    { "osVersion": "26.0", "count": 402 },
+    { "osVersion": "18.6", "count": 131 }
+  ],
+  "platforms": [
+    { "platform": "ios", "count": 1401 },
+    { "platform": "macos", "count": 376 },
+    { "platform": "tvos", "count": 100 }
+  ],
+  "dimensions": {
+    "profiles": [
+      { "bucket": "1-2", "count": 902 },
+      { "bucket": "3-5", "count": 617 },
+      { "bucket": "6-10", "count": 254 },
+      { "bucket": "11+", "count": 104 }
+    ]
+  }
+}

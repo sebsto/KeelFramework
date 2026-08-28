@@ -1,0 +1,36 @@
+{
+  "version": "2.0",
+  "routeKey": "ANY /{proxy+}",
+  "rawPath": "/station",
+  "rawQueryString": "appVersion=1.2.0&platform=ios",
+  "isBase64Encoded": false,
+  "headers": {
+    "host": "localhost",
+    "user-agent": "curl",
+    "accept": "*/*"
+  },
+  "pathParameters": {
+    "proxy": "station"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "apiId": "local",
+    "stage": "$default",
+    "domainName": "localhost",
+    "domainPrefix": "local",
+    "requestId": "local-request",
+    "time": "24/Aug/2026:10:00:00 +0000",
+    "timeEpoch": 1787911200000,
+    "http": {
+      "method": "GET",
+      "path": "/station",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "127.0.0.1",
+      "userAgent": "curl"
+    }
+  },
+  "queryStringParameters": {
+    "appVersion": "1.2.0",
+    "platform": "ios"
+  }
+}

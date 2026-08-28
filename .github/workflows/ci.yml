@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Two jobs on macOS (Swift 6.2, Xcode 26), one on Linux (CDK):
+#   1. swift — build + test both packages, lint
+#   2. cdk — tsc + jest + lint for the CDK constructs
+#
+# The SampleApp template has no .xcodeproj by design (project files don't
+# survive templating). The template Swift files compile transitively through
+# the client package's own build — the types they reference (RemoteConfigStore,
+# KeelFlag, TelemetryService, etc.) must exist and be public for the client
+# package itself to build. A dedicated SampleApp build would need a generated
+# Xcode project; park that until the template gains one.
+#
+# TODO: Once `scripts/keel-new.sh` generates a buildable project, add:
+#       keel new CITestApp && xcodebuild build -project CITestApp/...
+# ─────────────────────────────────────────────────────────────────────────────
+
+jobs:
+  # ── Swift (client + server) ──────────────────────────────────────────────
+  swift:
+    name: Swift — build, test, lint
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Cache client SPM
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-client-${{ runner.os }}-${{ hashFiles('Package.swift') }}
+          restore-keys: spm-client-${{ runner.os }}-
+
+      - name: Cache server SPM
+        uses: actions/cache@v4
+        with:
+          path: server/.build
+          key: spm-server-${{ runner.os }}-${{ hashFiles('server/Package.resolved') }}
+          restore-keys: spm-server-${{ runner.os }}-
+
+      - name: Build client
+        run: swift build --package-path .
+
+      - name: Build server
+        run: swift build --package-path server
+
+      - name: Test client
+        run: swift test --package-path .
+
+      - name: Test server
+        run: swift test --package-path server
+
+      - name: Lint Swift
+        run: make lint-swift
+
+  # ── CDK constructs (TypeScript) ──────────────────────────────────────────
+  cdk:
+    name: CDK — typecheck, test, lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: cdk/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Lint
+        run: npm run lint

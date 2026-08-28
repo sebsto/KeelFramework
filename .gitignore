@@ -1,0 +1,36 @@
+# Swift
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+.netrc
+
+# Package.resolved IS committed for both packages: docs/adr/0002 depends on the
+# lambda-kit fork commit being pinned, and a pre-release runtime pin that floats
+# is not a pin at all.
+!Package.resolved
+
+# Node / CDK
+node_modules/
+cdk.out/
+cdk.context.json
+*.tsbuildinfo
+cdk/lib/**/*.js
+cdk/lib/**/*.d.ts
+cdk/test/**/*.js
+cdk/test/**/*.d.ts
+.eslintcache
+
+# Lambda build products
+*.zip
+
+# Local secrets and per-machine config. `keel config` writes nothing here, but
+# an app's dev stack outputs (API URL, token) tend to land in one of these.
+.env
+.env.*
+*.local.json
+secrets.json
+
+# macOS
+.DS_Store

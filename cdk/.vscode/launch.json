@@ -1,0 +1,12 @@
+{
+    "configurations": [
+        {
+            "type": "wendy",
+            "name": "Debug Python App with Wendy",
+            "request": "attach",
+            "target": "/Users/sst/code/swift/AppFramework/cdk",
+            "cwd": "/Users/sst/code/swift/AppFramework/cdk",
+            "preLaunchTask": "wendy: Run Python App"
+        }
+    ]
+}

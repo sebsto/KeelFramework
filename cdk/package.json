@@ -1,0 +1,50 @@
+{
+  "name": "@keel/cdk",
+  "version": "0.1.0",
+  "description": "CDK constructs for the Keel backend: bootstrap config, feature flags, and anonymous usage counters",
+  "license": "MIT",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.d.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "lint": "eslint lib test",
+    "lint:fix": "eslint lib test --fix",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "peerDependencies": {
+    "aws-cdk-lib": "^2.266.0",
+    "constructs": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.2.0",
+    "aws-cdk": "^2.1138.0",
+    "aws-cdk-lib": "^2.266.0",
+    "constructs": "^10.4.2",
+    "eslint": "^9.39.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.12",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "cdk",
+    "aws-cdk",
+    "lambda",
+    "swift",
+    "dynamodb",
+    "feature-flags",
+    "analytics"
+  ]
+}

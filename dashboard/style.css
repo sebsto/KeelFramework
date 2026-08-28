@@ -1,0 +1,170 @@
+/*
+ * Keel dashboard — layout and components. Colors come exclusively from
+ * tokens.css; this file should survive a rebrand untouched.
+ */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: var(--font-text);
+  line-height: 1.5;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+}
+
+header.page {
+  margin-bottom: 8px;
+}
+
+header.page h1 {
+  font-size: 1.6rem;
+  margin: 0 0 4px;
+}
+
+header.page p {
+  color: var(--text-2);
+  margin: 0;
+  max-width: 60ch;
+}
+
+/* ── Hero figures ─────────────────────────────────────────────────────── */
+.hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin: 28px 0;
+}
+
+.hero .stat {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.stat .stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat .stat-value.lit {
+  color: var(--accent);
+}
+
+.stat .stat-label {
+  color: var(--text-2);
+  font-size: 0.85rem;
+}
+
+.stat .stat-sub {
+  color: var(--text-2);
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
+/* ── Chart cards ──────────────────────────────────────────────────────── */
+section.card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 16px 0;
+}
+
+section.card h2 {
+  font-size: 1rem;
+  margin: 0 0 2px;
+}
+
+section.card .card-sub {
+  color: var(--text-2);
+  font-size: 0.82rem;
+  margin: 0 0 14px;
+}
+
+.legend {
+  display: flex;
+  gap: 16px;
+  font-size: 0.78rem;
+  color: var(--text-2);
+  margin-bottom: 10px;
+}
+
+.legend .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 5px;
+  vertical-align: baseline;
+}
+
+.chart-empty {
+  color: var(--text-2);
+  font-size: 0.9rem;
+  padding: 40px 0;
+  text-align: center;
+}
+
+/* ── Horizontal bars (versions, OS, platforms, dimensions) ────────────── */
+.vbar {
+  display: grid;
+  grid-template-columns: minmax(64px, auto) 1fr minmax(90px, auto);
+  align-items: center;
+  gap: 12px;
+  padding: 5px 0;
+}
+
+.vbar-name {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.vbar-track {
+  background: var(--hairline);
+  border-radius: 4px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.vbar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--muted);
+  transition: width 0.7s ease-out;
+}
+
+.vbar-lead .vbar-fill {
+  background: var(--accent);
+}
+
+.vbar-val {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+footer.generated {
+  color: var(--text-2);
+  font-size: 0.78rem;
+  margin-top: 24px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vbar-fill {
+    transition: none;
+  }
+}

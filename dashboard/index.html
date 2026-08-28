@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Usage</title>
+  <!-- tokens.css is the whole restyling surface; style.css should survive a rebrand. -->
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header class="page">
+      <h1>Usage</h1>
+      <p>
+        Anonymous aggregate counters — no identifiers, no per-device rows. Everything the
+        backend stores is on this page; that is what makes the privacy policy checkable
+        rather than a promise.
+      </p>
+    </header>
+
+    <div class="hero">
+      <div class="stat">
+        <div class="stat-value lit" id="installs">—</div>
+        <div class="stat-label">Installs, all time</div>
+        <div class="stat-sub">Over-counts reinstalls — the honest cost of no identifier.</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="conversions">—</div>
+        <div class="stat-label">Conversions, all time</div>
+        <div class="stat-sub">No ratio on purpose: both counts, judge for yourself.</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="dau-latest">—</div>
+        <div class="stat-label">Active today</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="mau-latest">—</div>
+        <div class="stat-label">Active this month</div>
+      </div>
+    </div>
+
+    <section class="card">
+      <h2>Daily active devices</h2>
+      <p class="card-sub">Last 30 days, UTC, split by license state.</p>
+      <div class="legend" data-legend-for="chart-dau">
+        <span data-cohort="free"><span class="swatch" data-token="--cohort-free"></span>Free</span>
+        <span data-cohort="trial"><span class="swatch" data-token="--cohort-trial"></span>Trial</span>
+        <span data-cohort="paid"><span class="swatch" data-token="--cohort-paid"></span>Paid</span>
+      </div>
+      <figure id="chart-dau" style="margin: 0">
+        <p class="chart-empty" hidden>No data in this window yet.</p>
+      </figure>
+    </section>
+
+    <section class="card">
+      <h2>Monthly active devices</h2>
+      <p class="card-sub">Last 12 months; the current month is partial.</p>
+      <div class="legend" data-legend-for="chart-mau">
+        <span data-cohort="free"><span class="swatch" data-token="--cohort-free"></span>Free</span>
+        <span data-cohort="trial"><span class="swatch" data-token="--cohort-trial"></span>Trial</span>
+        <span data-cohort="paid"><span class="swatch" data-token="--cohort-paid"></span>Paid</span>
+      </div>
+      <figure id="chart-mau" style="margin: 0">
+        <p class="chart-empty" hidden>No data in this window yet.</p>
+      </figure>
+    </section>
+
+    <section class="card">
+      <h2>App versions</h2>
+      <p class="card-sub">Seen this month. An install that upgrades mid-month counts under both.</p>
+      <figure id="chart-versions" style="margin: 0">
+        <p class="chart-empty" hidden>No data this month yet.</p>
+      </figure>
+    </section>
+
+    <section class="card">
+      <h2>OS versions</h2>
+      <p class="card-sub">Seen this month.</p>
+      <figure id="chart-os" style="margin: 0">
+        <p class="chart-empty" hidden>No data this month yet.</p>
+      </figure>
+    </section>
+
+    <section class="card">
+      <h2>Platforms</h2>
+      <p class="card-sub">Seen this month.</p>
+      <figure id="chart-platforms" style="margin: 0">
+        <p class="chart-empty" hidden>No data this month yet.</p>
+      </figure>
+    </section>
+
+    <!-- One card per app-declared dimension, created by stats.js from the response. -->
+    <div id="dimensions"></div>
+
+    <footer class="generated" id="generated" hidden></footer>
+  </main>
+  <script src="stats.js"></script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "node16",
+    "moduleResolution": "node16",
+    // Required by ts-jest whenever module is Node16/18/Next.
+    "isolatedModules": true,
+    "lib": ["ES2022"],
+    "declaration": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    // Not enabled: aws-cdk-lib's own .d.ts files declare `foo?: T` properties that
+    // implement `foo: T | undefined` interfaces, so exactOptionalPropertyTypes produces
+    // 20 errors inside node_modules before any of our code is checked.
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "experimentalDecorators": true,
+    "typeRoots": ["./node_modules/@types"]
+  },
+  "include": ["lib/**/*.ts", "test/**/*.ts", "bin/**/*.ts"],
+  "exclude": ["node_modules", "cdk.out"]
+}

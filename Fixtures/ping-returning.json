@@ -1,0 +1,11 @@
+{
+  "firstPingEver": false,
+  "firstToday": true,
+  "firstThisMonth": false,
+  "firstThisVersion": false,
+  "firstPaidLaunch": false,
+  "appVersion": "2.1.0",
+  "osVersion": "26.1",
+  "platform": "macos",
+  "licenseState": "paid"
+}

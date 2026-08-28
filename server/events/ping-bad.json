@@ -1,0 +1,33 @@
+{
+  "version": "2.0",
+  "routeKey": "ANY /{proxy+}",
+  "rawPath": "/v1/ping",
+  "rawQueryString": "",
+  "isBase64Encoded": false,
+  "headers": {
+    "host": "localhost",
+    "user-agent": "curl",
+    "accept": "*/*"
+  },
+  "pathParameters": {
+    "proxy": "v1/ping"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "apiId": "local",
+    "stage": "$default",
+    "domainName": "localhost",
+    "domainPrefix": "local",
+    "requestId": "local-request",
+    "time": "24/Aug/2026:10:00:00 +0000",
+    "timeEpoch": 1787911200000,
+    "http": {
+      "method": "POST",
+      "path": "/v1/ping",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "127.0.0.1",
+      "userAgent": "curl"
+    }
+  },
+  "body": "{\"firstToday\": true, \"appVersion\": \"not a version!!\", \"osVersion\": \"26.1\", \"platform\": \"ios\", \"licenseState\": \"free\"}"
+}
