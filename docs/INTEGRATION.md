@@ -47,6 +47,13 @@ For background on *why* things are shaped the way they are, see
 25. [Seeding the initial config](#25-seeding-the-initial-config)
 26. [Deploy checklist](#26-deploy-checklist)
 
+**App-owned routes (supplement to Part 3)**
+
+- [App-owned routes](#app-owned-routes)
+  - [Pointing the CDK construct at your executable](#pointing-the-cdk-construct-at-your-executable)
+  - [DynamoDB grant for app-owned item kinds](#dynamodb-grant-for-app-owned-item-kinds)
+  - [Worked example: Orthanc's Stripe routes](#worked-example-orthancs-stripe-routes)
+
 **Part 4 — Dashboard**
 
 27. [Stats dashboard](#27-stats-dashboard)
@@ -1517,6 +1524,190 @@ keel config set features.confetti true --table $TABLE_NAME
 ```
 
 Live within 60 seconds, no Lambda restart.
+
+---
+
+# App-owned routes
+
+Some apps need routes alongside Keel's — a payment webhook, a license check, a
+download redirect — without giving up the counters and config Keel provides. You do
+not fork `KeelLambda` for this. Instead you write your own executable that depends on
+`KeelServer` + `KeelRouter`, mounts Keel's routes on a shared builder, and then
+registers its own routes before calling `.build()`.
+
+`server/Sources/KeelLambda/Lambda.swift` is the reference. Its `makeRouterBuilder`
+method encapsulates the wiring (stores, ConfigCache, KeelRouter, IAP), returns an
+`HTTPRouterBuilder` with all framework routes already mounted, and lets you add routes
+before the final `.build()` call.
+
+## Pointing the CDK construct at your executable
+
+`KeelBackend` has a `lambdaAssetPath` prop that takes the path to a compiled Lambda zip
+file. Use it to point the construct at your own executable instead of `KeelLambda`:
+
+```ts
+const backend = new KeelBackend(this, "Backend", {
+    appName: "myapp",
+    envName: "prod",
+    auth: KeelAuth.sharedSecret({ parameterName: "/keel/myapp/prod/api-secret" }),
+    lambdaAssetPath: "path/to/MyAppLambda.zip",  // your executable, not KeelLambda
+});
+```
+
+Build your executable the same way as `KeelLambda` (see §21). Register your own routes
+on API Gateway by repeating the explicit-route CDK pattern from the framework's own
+stack, or use the `aliasRoutes` prop for simple path remaps.
+
+## DynamoDB grant for app-owned item kinds
+
+Keel's default IAM grant gives the Lambda `UpdateItem`, `Query`, and `GetItem` on the
+table — enough for counters and config. If your routes write their own DynamoDB item
+kinds (e.g. Stripe checkout sessions, license rows, anything with `PutItem`), you need
+an additional grant on the table itself:
+
+```ts
+// In your CDK stack, after creating the KeelBackend:
+backend.table.grantWriteData(backend.lambdaFunction);
+// Or, for a narrower grant (PutItem only):
+backend.table.grant(backend.lambdaFunction, "dynamodb:PutItem");
+```
+
+Do **not** enable the `iap` prop just to get `PutItem` — that also mounts the App Store
+routes and expects the IAP environment variables. Grant directly on the table instead.
+
+## Worked example: Orthanc's Stripe routes
+
+The following example shows how Orthanc would register its three Stripe-facing routes
+(`POST /v1/checkout`, `POST /v1/stripe-webhook`, `GET /v1/license`) on the same Lambda
+as Keel. This is documentation — the code lives in the Orthanc repo, not in Keel.
+
+### main.swift
+
+```swift
+import AWSLambdaEvents
+import AWSLambdaRuntime
+import Configuration
+import KeelRouter
+import KeelServer
+import KeelServerDynamoDB
+import Logging
+import Routing
+import SotoDynamoDB
+// Orthanc's own handlers — NOT part of KeelFramework
+import OrthancBackendCore
+
+@main
+struct OrthancLambda: LambdaHandler {
+    private let router: HTTPRouter
+
+    init() throws {
+        let settings = try Settings()
+        var logger = Logger(label: "orthanc")
+        logger.logLevel = settings.logLevel
+
+        // 1. Get the builder with all Keel routes already mounted
+        let builder = KeelLambda.makeRouterBuilder(settings: settings, logger: logger)
+
+        // 2. Orthanc-specific dependencies
+        let dynamoDB = DynamoDB(client: AWSClient())
+        let licenseStore = DynamoDBLicenseStore(dynamoDB: dynamoDB, tableName: settings.tableName)
+
+        // 3. SSM secret for Stripe webhook signature verification
+        //    (read at cold start, same pattern as KeelAuthorizerLambda)
+        let stripeSecret = try await SSMClient().getParameter(name: settings.stripeWebhookSecretPath)
+
+        // 4. Register app routes alongside Keel's
+        builder.post("/v1/checkout") { request, _ in
+            try await CheckoutHandler(store: licenseStore).handle(request)
+        }
+        // Stripe sends raw bytes; the signature header is verified against the body
+        builder.post("/v1/stripe-webhook") { request, _ in
+            try await StripeWebhookHandler(
+                store: licenseStore,
+                webhookSecret: stripeSecret
+            ).handle(request)
+        }
+        builder.get("/v1/license") { request, _ in
+            try await LicenseHandler(store: licenseStore).handle(request)
+        }
+
+        self.router = builder.build()
+    }
+
+    func handle(
+        _ event: APIGatewayV2Request, context: LambdaContext
+    ) async throws -> APIGatewayV2Response {
+        let response = await router.handle(HTTPRequest(event: event), logger: context.logger)
+        return APIGatewayV2Response(
+            statusCode: response.statusCode,
+            headers: response.headers,
+            body: response.body)
+    }
+
+    static func main() async throws {
+        let handler = try await OrthancLambda()
+        let runtime = LambdaRuntime(
+            encoder: LambdaJSONOutputEncoder<APIGatewayV2Response>(JSONEncoder()),
+            decoder: ProxySynthesizingDecoder(),
+            body: handler.handle)
+        try await runtime.run()
+    }
+}
+```
+
+### Things this example exercises
+
+**SSM secrets.** Stripe's webhook secret is a `SecureString` parameter, read at cold
+start so every invocation reuses the same value. Rotation: update the SSM parameter,
+then force a cold start by touching the Lambda's config (see §22 for the pattern).
+
+**Raw-bytes webhook.** Stripe signs the raw request body. `HTTPRequest.body` is already
+decoded from base64 if needed, so `StripeWebhookHandler` reads `request.body` (a `Data`)
+directly — no further decoding step.
+
+**Extra IAM grant.** `DynamoDBLicenseStore` uses `PutItem` to write license records:
+
+```ts
+// In the CDK stack
+backend.table.grant(backend.lambdaFunction, "dynamodb:PutItem");
+```
+
+**Route registration on API Gateway.** Keel's CDK registers only the Keel routes
+(`/v1/bootstrap`, `/v1/ping`, `/v1/stats`, plus any aliases) on the HTTP API. You need
+to add your own routes in CDK. The simplest way is to extend the `KeelBackend` construct
+after the fact:
+
+```ts
+const backend = new KeelBackend(this, "Backend", {
+    appName: "orthanc",
+    envName: props.envName,
+    auth: KeelAuth.sharedSecret({ parameterName: "/keel/orthanc/prod/api-secret" }),
+    lambdaAssetPath: "path/to/OrthancLambda.zip",
+});
+
+// Add the Orthanc routes to the same HTTP API
+backend.httpApi.addRoutes({
+    path: "/v1/checkout",
+    methods: [apigwv2.HttpMethod.POST],
+    integration: new apigwv2_integrations.HttpLambdaIntegration(
+        "CheckoutIntegration", backend.lambdaFunction),
+    authorizer: backend.authorizer,   // carries the shared-secret authorizer, if configured
+});
+backend.httpApi.addRoutes({
+    path: "/v1/stripe-webhook",
+    methods: [apigwv2.HttpMethod.POST],
+    integration: new apigwv2_integrations.HttpLambdaIntegration(
+        "WebhookIntegration", backend.lambdaFunction),
+    // Stripe webhooks are always public — no Keel authorizer
+});
+backend.httpApi.addRoutes({
+    path: "/v1/license",
+    methods: [apigwv2.HttpMethod.GET],
+    integration: new apigwv2_integrations.HttpLambdaIntegration(
+        "LicenseIntegration", backend.lambdaFunction),
+    authorizer: backend.authorizer,
+});
+```
 
 ---
 
