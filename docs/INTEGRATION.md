@@ -2026,6 +2026,175 @@ struct SettingsView: View {
 
 ---
 
+## IAM transport contract
+
+<a name="IAM-transport-contract"></a>
+
+Keel backends can require AWS IAM (`iam`) authorization — each request must carry an
+`Authorization: AWS4-HMAC-SHA256 ...` signature computed from the caller's IAM credentials.
+`KeelCore` has no AWS or crypto dependency, so SigV4 signing belongs to the **app's own
+`HTTPTransport`** rather than the framework. This section specifies the contract.
+
+### When to use IAM auth
+
+Configure `auth: KeelAuth.iam()` in the CDK stack when your users sign in with AWS
+Cognito (or another AWS-identity provider) and you want API Gateway to enforce that each
+caller holds a valid IAM credential. Typical for internal tools and developer-facing
+APIs; for consumer apps, `sharedSecret` is simpler.
+
+On the client, set `authorization: .none` on `BackendClient` and inject an `HTTPTransport`
+that signs every outgoing request.
+
+### The contract
+
+An app-owned signing transport must:
+
+1. **Receive** an `HTTPRequestData` from `BackendClient` — method, full URL, any
+   client-set headers (e.g. `Content-Type: application/json`), and an optional body.
+2. **Sign only when credentials exist.** If no IAM credentials are available (signed-out
+   state, App Review demo mode, offline bootstrap) the request must be forwarded
+   **unsigned and unmodified**. This is load-bearing: `/v1/bootstrap` and `/v1/stats`
+   are declared `authorizationType: NONE` in the CDK stack and must work without
+   credentials. A transport that always adds an `Authorization` header breaks those
+   public routes.
+3. **Hash the body** and set `x-amz-content-sha256` to the hex-encoded SHA-256. For
+   requests with no body, use the hash of the empty string:
+   `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+   Do **not** choose `UNSIGNED-PAYLOAD` for AWS_IAM routes — API Gateway's IAM
+   authorizer validates the content hash.
+4. **Set `x-amz-security-token`** to the session token if the credential includes one
+   (Cognito federated identities always do). The token must be included in the signed
+   headers; omitting it causes a signature mismatch.
+5. **Sign the request exactly as `BackendClient` built it.** Do not mutate headers or
+   the body before computing the canonical request. Any change — even adding a header —
+   invalidates the signature.
+6. **Use an injectable clock.** The signer must accept a `() -> Date` dependency
+   (defaulting to `{ Date() }`) so tests can inject a fixed timestamp and reproduce a
+   golden signature byte-for-byte.
+7. **Sign** with `AWS4-HMAC-SHA256` over the canonical request (method, URI path, query
+   string, signed headers, body hash). The region and service are `execute-api`.
+8. **Forward** the signed request to the underlying transport.
+9. **Return** an `HTTPResponseData` from the response.
+
+Header casing is case-insensitive at the transport boundary — `HTTPRequestData.headers`
+uses lower-case keys by convention, but the AWS signing algorithm requires canonical
+ordering, which you compute regardless.
+
+### Reference implementation — `KeelSigV4Transport` (Apple / CryptoKit only)
+
+`KeelClientTesting` ships a **real, tested SigV4 signer**: `KeelSigV4Transport`. It is
+gated on `#if canImport(CryptoKit)` — CryptoKit is Apple-platform-only, which is why
+this lives in the testing module rather than in `KeelCore`. The framework stays
+dependency-free; your app test target (and production code on Apple platforms) gains a
+reference transport at zero extra cost.
+
+Key properties:
+- **Signs only when credentials exist.** Pass `credentials: nil` and the request goes
+  through unsigned — public routes work without any AWS session.
+- **Injectable clock** via the `date: () -> Date` parameter. The default is `{ Date() }`.
+  Override it in tests to pin `x-amz-date` and reproduce a deterministic signature.
+- **Session token.** When `AWSCredentials.sessionToken` is non-nil, `x-amz-security-token`
+  is added to the request headers and included in `SignedHeaders`.
+
+```swift
+import KeelCore
+import KeelClientTesting
+
+// Production: credentials from your Cognito identity pool (or wherever).
+let transport = KeelSigV4Transport(
+    inner: URLSessionTransport(),
+    credentials: AWSCredentials(
+        accessKeyId: credentials.accessKeyId,
+        secretAccessKey: credentials.secretAccessKey,
+        sessionToken: credentials.sessionToken),   // nil for long-term creds
+    region: "eu-central-1")
+
+let client = BackendClient(
+    baseURL: URL(string: "https://api.example.com")!,
+    authorization: .none,   // transport owns all authorization
+    transport: transport)
+```
+
+For a production app that fetches short-lived Cognito credentials, rebuild the transport
+(or replace the credentials) each time the session refreshes; there is no credential-refresh
+hook inside the transport itself.
+
+On Android / Skip, replace the `CryptoKit` HMAC calls with `javax.crypto.Mac` —
+`KeelCore` has no dependency on either.
+
+### Testing without AWS credentials
+
+Two options depending on what you are testing.
+
+**Option A — `RecordingSigningTransport` (cross-platform, no crypto)**
+
+Records every request the transport receives; does not add any signing headers. Use
+when you only need to assert that `BackendClient` handed the request to the transport:
+
+```swift
+import Testing
+import KeelCore
+import KeelClientTesting
+
+@Test("Ping reaches the transport")
+func pingReachesTransport() async throws {
+    let recording = RecordingSigningTransport()
+    await recording.inner.respond(to: "/v1/ping", body: #"{"ok":true}"#)
+
+    let client = BackendClient(
+        baseURL: URL(string: "https://api.example.com")!,
+        authorization: .none,
+        transport: recording)
+    await client.send(ping: myPing)
+
+    let requests = await recording.requests
+    #expect(!requests.isEmpty)
+    // The client itself adds no Authorization header — signing is the transport's job.
+    #expect(requests.first?.headers["authorization"] == nil)
+}
+```
+
+**Option B — `KeelSigV4Transport` with a `FakeTransport` inner (Apple / golden test)**
+
+Use when you need to assert the signature value itself — the only way to catch
+canonicalization bugs, wrong signed-header sets, or a broken session-token path:
+
+```swift
+#if canImport(CryptoKit)
+import Testing
+import KeelCore
+import KeelClientTesting
+
+@Test("SigV4 golden signature")
+func goldenSignature() async throws {
+    let fake = FakeTransport()
+    await fake.respond(to: "/v1/ping", body: #"{"ok":true}"#)
+
+    let transport = KeelSigV4Transport(
+        inner: fake,
+        credentials: AWSCredentials(
+            accessKeyId: "AKIDEXAMPLE",
+            secretAccessKey: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"),
+        region: "eu-central-1",
+        date: { fixedDate })   // inject deterministic clock
+
+    _ = try await transport.send(HTTPRequestData(
+        method: .post,
+        url: URL(string: "https://api.example.com/v1/ping")!,
+        body: Data(#"{"schemaVersion":1}"#.utf8)))
+
+    let auth = try #require(await fake.requests.last?.headers["authorization"])
+    #expect(auth.contains("Signature=91edb29d32b6cd7542559f8344cbd6887c368bc34dd6d6dcb7639f3f9b38d547"))
+}
+#endif
+```
+
+`Tests/KeelClientTests/SigV4GoldenTests.swift` contains the full pinned vector with
+assertions on payload hash, canonical request, string-to-sign, final signature, and the
+public-route guarantee (no `Authorization` header when `credentials: nil`).
+
+---
+
 ## Quick reference
 
 | What you want | Client | CLI |

@@ -209,6 +209,50 @@ struct BackendClientTests {
         #expect(await transport.requests.isEmpty)
     }
 
+    // MARK: - IAM / signing transport
+
+    @Test("An app-owned signing transport receives every request with .none authorization")
+    func customSigningTransportReceivesRequests() async throws {
+        // Demonstrates the contract for the SigV4 path documented in docs/INTEGRATION.md
+        // §IAM-transport-contract: BackendClient with .none authorization passes the raw
+        // HTTPRequestData to the transport unchanged; the transport (not the client) is
+        // responsible for adding AWS4-HMAC-SHA256 Authorization, x-amz-content-sha256, and
+        // x-amz-security-token before sending over the wire.
+        //
+        // This mirrors how an app wires KeelSigV4Transport: it injects the transport at
+        // BackendClient init, sets .none as the authorization mode (no Bearer header needed),
+        // and the transport handles signing.
+        actor SigningRecorder: HTTPTransport {
+            private let base: FakeTransport
+            private(set) var didSign = false
+
+            init(_ base: FakeTransport) { self.base = base }
+
+            func send(_ request: HTTPRequestData) async throws -> HTTPResponseData {
+                // A real SigV4 transport adds Authorization / x-amz-* here.
+                // This stub just records that the hook fired.
+                didSign = true
+                return try await base.send(request)
+            }
+        }
+
+        let fake = FakeTransport()
+        await fake.respond(to: "/v1/ping", body: #"{"ok":true}"#)
+
+        let recorder = SigningRecorder(fake)
+        // .none: no Bearer header — the transport owns all authorization.
+        let client = BackendClient(
+            baseURL: Self.base, authorization: .none, transport: recorder)
+        await client.send(ping: Self.ping())
+
+        // The transport's signing hook was called, confirming BackendClient delegates
+        // every outgoing request to the injected transport without modification.
+        #expect(await recorder.didSign)
+        // No Authorization header was prepended by the client itself.
+        let request = try #require(await fake.requests.first)
+        #expect(request.headers["Authorization"] == nil)
+    }
+
     // MARK: - Stats
 
     @Test("Stats decodes the published aggregates")
