@@ -43,6 +43,18 @@ export interface KeelBackendProps {
   readonly envName: string;
 
   /**
+   * An already-deployed table to use instead of creating one. An app migrating onto Keel
+   * imports its live table (`dynamodb.Table.fromTableName/Arn`) and hands it in, so the
+   * construct does not create a second one: no orphan table left behind, and the existing
+   * `AGG#` history stays where the dashboard already reads it from.
+   *
+   * The table must carry the contract's key schema (`pk`/`sk`, TTL on `ttl`) — CDK cannot
+   * check that for an imported resource. When unset, the construct creates the table as
+   * usual. The same least-privilege grants are applied either way.
+   */
+  readonly existingTable?: dynamodb.ITable;
+
+  /**
    * How non-public routes are authorized. Defaults to `KeelAuth.none()` — an explicit
    * `sharedSecret` default would fail synth for everyone who has not created the SSM
    * parameter yet, which is a worse first-run experience than an open dev API.
@@ -78,6 +90,24 @@ export interface KeelBackendProps {
    * raised. The account cap already bounds cost when this is unset.
    */
   readonly reservedConcurrency?: number;
+
+  /**
+   * Default-route throttling on the HTTP API's default stage, applied through the stage's
+   * `defaultRouteSettings`.
+   *
+   * Defaults to `{ rateLimit: 20, burstLimit: 40 }`. The ping endpoint is public in every
+   * deployment, so some ceiling has to exist, and this one is free: a client pings at most
+   * once per UTC day, so 20 requests/sec is orders of magnitude above any honest traffic
+   * pattern while still capping a runaway client or a casual flood. Raise it for a
+   * genuinely chattier API, lower it to tighten a small deployment.
+   */
+  readonly throttling?: {
+    /** Steady-state requests per second across the stage. */
+    readonly rateLimit: number;
+
+    /** Bucket size for bursts above `rateLimit`. */
+    readonly burstLimit: number;
+  };
 
   /** Email for a monthly AWS Budgets notification. No budget resource when unset. */
   readonly budgetEmail?: string;
@@ -131,7 +161,8 @@ export interface KeelIapOptions {
  * ```
  */
 export class KeelBackend extends Construct {
-  readonly table: dynamodb.Table;
+  /** `ITable`, not `Table`: with `existingTable` this is an imported reference. */
+  readonly table: dynamodb.ITable;
   readonly handler: lambda.Function;
   readonly httpApi: apigwv2.HttpApi;
 
@@ -153,19 +184,26 @@ export class KeelBackend extends Construct {
     const prefix = `${props.appName}-${props.envName}`;
 
     // --- Table ---
-    // No fixed tableName: RETAIN plus a fixed name is the orphan-table trap — a stack
-    // deletion or a replacing change leaves a table CloudFormation no longer tracks, and
-    // every later deploy fails with "already exists" (odvpn, the hard way). The name is
-    // exported instead, and the function gets it through TABLE_NAME.
-    this.table = new dynamodb.Table(this, "Table", {
-      partitionKey: { name: KEEL_TABLE_KEYS.partitionKey, type: dynamodb.AttributeType.STRING },
-      sortKey: { name: KEEL_TABLE_KEYS.sortKey, type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      timeToLiveAttribute: KEEL_TABLE_KEYS.timeToLiveAttribute,
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: isProduction },
-      removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
-      deletionProtection: isProduction,
-    });
+    // A migrating app brings its own table; creating a parallel one would strand its
+    // history. Retention posture is the owner's business in that case — CloudFormation
+    // does not manage a table it only holds a reference to.
+    if (props.existingTable) {
+      this.table = props.existingTable;
+    } else {
+      // No fixed tableName: RETAIN plus a fixed name is the orphan-table trap — a stack
+      // deletion or a replacing change leaves a table CloudFormation no longer tracks, and
+      // every later deploy fails with "already exists" (odvpn, the hard way). The name is
+      // exported instead, and the function gets it through TABLE_NAME.
+      this.table = new dynamodb.Table(this, "Table", {
+        partitionKey: { name: KEEL_TABLE_KEYS.partitionKey, type: dynamodb.AttributeType.STRING },
+        sortKey: { name: KEEL_TABLE_KEYS.sortKey, type: dynamodb.AttributeType.STRING },
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        timeToLiveAttribute: KEEL_TABLE_KEYS.timeToLiveAttribute,
+        pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: isProduction },
+        removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+        deletionProtection: isProduction,
+      });
+    }
 
     // --- Function ---
     const packagePath = props.lambdaPackagePath ?? path.join(process.cwd(), "..", "server");
@@ -290,6 +328,17 @@ export class KeelBackend extends Construct {
         );
       }
     }
+
+    // --- Throttling ---
+    // `/v1/ping` is public in every deployment, so the stage gets a ceiling by default
+    // rather than on request. Set through the L1: `HttpStage` does not surface
+    // `defaultRouteSettings`, and the default stage is created for us by `HttpApi`.
+    const throttling = props.throttling ?? { rateLimit: 20, burstLimit: 40 };
+    const cfnStage = this.httpApi.defaultStage!.node.defaultChild as apigwv2.CfnStage;
+    cfnStage.defaultRouteSettings = {
+      throttlingRateLimit: throttling.rateLimit,
+      throttlingBurstLimit: throttling.burstLimit,
+    };
 
     // --- Alarm ---
     new cloudwatch.Alarm(this, "Errors", {
