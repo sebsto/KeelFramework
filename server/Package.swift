@@ -93,6 +93,7 @@ let package = Package(
             name: "KeelServerTests",
             dependencies: [
                 "KeelServer",
+                "KeelRouter",
                 "KeelServerTesting",
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "InMemoryLogging", package: "swift-log"),
