@@ -9,8 +9,15 @@ fastest way to learn the framework's shape.
 ```sh
 cd backend
 npm install
+# `@keel/cdk` is a local (file:) dependency — install its own deps once, or the
+# next command fails with "Cannot find module 'aws-cdk-lib'":
+make -C ../../.. build-cdk    # equivalently: (cd ../../../cdk && npm ci)
 npx cdk synth                 # works before any Swift build (placeholder function)
-make -C ../../.. lambda       # build the real function zips (container, arm64)
+# The real Lambda zips are cross-compiled in a container. The Makefile's `lambda`
+# target uses Apple's `container` tool by default — run `container system start`
+# once before this step — or switch the target to `--cross-compile docker` to
+# build with a running Docker daemon instead.
+make -C ../../.. lambda       # build the real function zips (arm64)
 export CDK_DEFAULT_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 export CDK_DEFAULT_REGION=eu-west-1   # change to your preferred region
 npx cdk deploy                # dev posture: disposable table, generated hostname
