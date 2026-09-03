@@ -69,16 +69,21 @@ struct KeelLambda: LambdaHandler {
     /// configured) the IAP routes.
     ///
     /// This is the reference wiring for an app that needs its own routes alongside Keel's.
-    /// An app's own `main.swift` calls this (or reproduces the same steps) and then registers
-    /// its routes on the returned builder before calling `.build()`:
+    /// It is `internal` to this **executable** target, so an app cannot import or call it —
+    /// an app reproduces these steps in its own `main.swift` against the framework's public
+    /// **library** targets (`KeelServer` handlers + `ConfigCache`, `KeelServerDynamoDB` stores,
+    /// and `KeelRouter` for the `KeelRouter` init and the `builder.mount(keel:)` seam):
     ///
     /// ```swift
-    /// let builder = try KeelLambda.makeRouterBuilder(settings: settings, logger: logger)
+    /// let keel = KeelRouter(bootstrap: …, ping: …, stats: …, corsConfig: …, logger: logger)
+    /// let builder = HTTPRouterBuilder()
+    /// builder.mount(keel: keel)
     /// builder.get("/v1/my-route") { request, _ in … }
     /// let router = builder.build()
     /// ```
     ///
-    /// See `docs/INTEGRATION.md` §"App-owned routes" for the full worked example.
+    /// See `docs/INTEGRATION.md` §"App-owned routes" for the full worked example, and
+    /// `AdopterSeamTests` for the compile-time guard that the seam stays importable.
     ///
     /// - Parameters:
     ///   - settings: Resolved deployment configuration (from the environment at cold start).
