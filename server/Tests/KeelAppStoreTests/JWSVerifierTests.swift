@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import KeelIAP
+@testable import KeelAppStore
 
 /// Every rejection path of the transaction verifier, against the injected test PKI. The
 /// order of checks is part of the contract: cryptography first, identity claims after.

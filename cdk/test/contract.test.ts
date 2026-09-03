@@ -1,7 +1,7 @@
 import {
+  KEEL_APPSTORE_NOTIFICATION_ROUTE,
   KEEL_CORE_ROUTES,
   KEEL_COUNTER_TTL_DAYS,
-  KEEL_IAP_ROUTES,
   KEEL_SCHEMA_VERSION,
   KEEL_TABLE_KEYS,
 } from "../lib";
@@ -26,13 +26,16 @@ describe("wire contract constants", () => {
     expect(ping?.maxAgeSeconds).toBeUndefined();
   });
 
-  test("every IAP route is optional — an app without purchases mounts none", () => {
-    expect(KEEL_IAP_ROUTES.length).toBeGreaterThan(0);
-    expect(KEEL_IAP_ROUTES.every((r) => r.optional)).toBe(true);
+  test("the App Store notification route is optional and verification-only", () => {
+    expect(KEEL_APPSTORE_NOTIFICATION_ROUTE.optional).toBe(true);
+    expect(`${KEEL_APPSTORE_NOTIFICATION_ROUTE.method} ${KEEL_APPSTORE_NOTIFICATION_ROUTE.path}`)
+      .toBe("POST /v1/appstore-notification");
   });
 
   test("no route path is declared twice", () => {
-    const paths = [...KEEL_CORE_ROUTES, ...KEEL_IAP_ROUTES].map((r) => `${r.method} ${r.path}`);
+    const paths = [...KEEL_CORE_ROUTES, KEEL_APPSTORE_NOTIFICATION_ROUTE].map(
+      (r) => `${r.method} ${r.path}`,
+    );
     expect(new Set(paths).size).toBe(paths.length);
   });
 

@@ -112,7 +112,8 @@ type declarations fail under it.
 ## Status
 
 `KeelBackend`, `KeelAuth`, and `KeelStatsSite` are implemented and covered by the
-assertions suite. `KeelIap` lands with the IAP layer (phase 7).
+assertions suite. App Store notification verification is opt-in via
+`KeelBackendProps.appStoreNotifications` (verification only — no entitlement model).
 
 To prove a mode synthesizes outside jest:
 

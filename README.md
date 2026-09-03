@@ -38,17 +38,18 @@ device; the server only increments shared counters. Everything collected is publ
 **Custom dimensions.** App-specific distributions (e.g. "how many profiles does a user
 have?") sent as pre-bucketed values so the raw number never leaves the device.
 
-**In-App Purchases (optional).** Server-side StoreKit 2 JWS verification, entitlement
-storage in DynamoDB, and App Store Server Notifications v2 handling (refunds, revocations,
-expirations). The client-side `EntitlementService` bridges StoreKit into the `LicenseState`
-the rest of the framework speaks.
+**App Store verification (optional).** Server-side StoreKit 2 JWS verification and App Store
+Server Notifications v2 verification (refunds, revocations, expirations) via the `KeelAppStore`
+module — verification only, no entitlement model: what a purchase grants is the app's business.
+The client-side `EntitlementService` bridges StoreKit into the `LicenseState` the rest of the
+framework speaks.
 
 All of this deploys as **one Lambda, one DynamoDB table, and one HTTP API**, behind a
 domain you own. The CDK construct library handles the infrastructure; you bring a
 `KeelConfiguration` on the client and a CDK stack on the server.
 
 → **[Integration Guide](docs/INTEGRATION.md)** — step-by-step adoption: client SDK,
-server-side CLI, backend deployment, dashboard, and IAP.
+server-side CLI, backend deployment, dashboard, and App Store verification.
 → **[Architecture Guide](docs/ARCHITECTURE.md)** — the design behind each piece: data
 model, request flows, privacy model, infrastructure, cost model.
 
@@ -135,7 +136,7 @@ Requires Swift 6.2+ (Xcode 26+), Node 20+, and Apple's
 
 All eight phases implemented and green: wire contract with golden fixtures, server
 handlers, DynamoDB stores and Lambda executables, the `@keel/cdk` constructs, the client
-library, the dashboard, the IAP/entitlement layer, and the SampleApp template
+library, the dashboard, the App Store verification layer, and the SampleApp template
 (`scripts/keel-new.sh MyApp` scaffolds a new app from it). Remaining before first real
 use: deploy `Templates/SampleApp` to an AWS account end-to-end, and the per-app retrofit
 plans sketched in `docs/RETROFIT.md`.
@@ -151,7 +152,7 @@ server/Package.swift       server package (Linux + macOS)
   Sources/KeelServer/      wire types, CounterSchema, handlers, store protocols
   Sources/KeelServerDynamoDB/
   Sources/KeelLambda/      the ready-made function
-  Sources/KeelIAP/         App Store JWS verification + entitlements (optional)
+  Sources/KeelAppStore/    App Store JWS + notification verification (optional)
   Sources/keel-cli/        config get/set, stats dump
 cdk/                       @keel/cdk construct library
 dashboard/                 static stats site

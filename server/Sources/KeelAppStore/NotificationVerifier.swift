@@ -6,13 +6,35 @@ public import FoundationEssentials
 public import Foundation
 #endif
 
+/// An App Store Server Notification v2 type — `REFUND`, `REVOKE`, `DID_RENEW`, `EXPIRED`, …
+///
+/// A `RawRepresentable` open enum, not a closed one and not a bare `String`. Apple curates
+/// this list and adds to it; a closed enum would turn a type this build has not heard of into
+/// a decode failure (and Apple into a retry loop), while a plain `String` gives up the compiler
+/// for nothing. The pattern is the one `HTTPField.Name` uses: dot-syntax in a `switch`, a typo
+/// on a named constant is a compile error, and a type Apple ships next year arrives as a value.
+///
+/// Only the two types every backend has an opinion about are named here — the framework does
+/// not curate Apple's ~15, an app compares against `Self(rawValue:)` for anything else.
+public struct AppStoreNotificationType: RawRepresentable, Hashable, Sendable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let refund = Self(rawValue: "REFUND")
+    public static let consumptionRequest = Self(rawValue: "CONSUMPTION_REQUEST")
+}
+
 /// An App Store Server Notification v2, after its outer JWS verified.
+///
+/// The initializer is deliberately **not public**: the only way an adopting app can obtain a
+/// value is `try await verifier.verify(rawBody)`, so any function taking a `NotificationPayload`
+/// is provably handling data Apple signed. The init is `package`-scoped so `KeelAppStoreTesting`
+/// (the same package) can build fixtures, while code in any other package cannot fabricate one.
 public struct NotificationPayload: Sendable, Equatable {
-    /// The raw type string — `REFUND`, `REVOKE`, `DID_RENEW`, `EXPIRED`, … Kept as a
-    /// string plus classified accessors rather than a closed enum: Apple adds types, and
-    /// a notification this build has not heard of must be acknowledged, not 400'd into
-    /// Apple's retry loop.
-    public let notificationType: String
+    /// The notification type, as an open enum — see `AppStoreNotificationType`. A type this
+    /// build has not heard of is still a value, so it is acknowledged, not 400'd into Apple's
+    /// retry loop.
+    public let notificationType: AppStoreNotificationType
 
     public let subtype: String?
     public let notificationUUID: String
@@ -23,15 +45,9 @@ public struct NotificationPayload: Sendable, Equatable {
     public let bundleId: String?
     public let environment: String?
 
-    /// The types that take an entitlement away. Everything else is informational to a
-    /// backend whose only IAP state is "entitled or not".
-    public var revokesEntitlement: Bool {
-        notificationType == "REFUND" || notificationType == "REVOKE"
-            || notificationType == "EXPIRED"
-    }
-
-    public init(
-        notificationType: String,
+    /// `KeelAppStoreTesting`, which is the same package, reaches this to build fixtures.
+    package init(
+        notificationType: AppStoreNotificationType,
         subtype: String? = nil,
         notificationUUID: String,
         signedTransactionInfo: String? = nil,
@@ -48,6 +64,10 @@ public struct NotificationPayload: Sendable, Equatable {
 }
 
 /// The trusted payload of a verified inner `signedTransactionInfo`.
+///
+/// Same rule as `NotificationPayload`: the initializer is not public, so a value can only come
+/// out of `verifier.verifyTransactionInfo(_:)`. `package`-scoped so `KeelAppStoreTesting` builds
+/// one for tests.
 public struct SignedTransactionInfo: Sendable, Equatable {
     public let transactionId: String
     public let originalTransactionId: String
@@ -57,7 +77,7 @@ public struct SignedTransactionInfo: Sendable, Equatable {
     public let revocationDate: Date?
     public let expiresDate: Date?
 
-    public init(
+    package init(
         transactionId: String,
         originalTransactionId: String,
         productId: String,
@@ -107,7 +127,7 @@ public struct NotificationVerifier: Sendable {
         let payload = try await core.verify(signedPayload)
         let claims = try JWSCore.decodeJSON(EnvelopeClaims.self, from: payload)
         return NotificationPayload(
-            notificationType: claims.notificationType,
+            notificationType: AppStoreNotificationType(rawValue: claims.notificationType),
             subtype: claims.subtype,
             notificationUUID: claims.notificationUUID,
             signedTransactionInfo: claims.data?.signedTransactionInfo,

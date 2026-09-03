@@ -1,5 +1,10 @@
 import Crypto
 import SwiftASN1
+// `@_spi(FixedExpiryValidationTime)` is intentionally-unstable swift-certificates API, kept on
+// purpose: it is what lets `JWSCore.validationTime` pin chain-expiry evaluation to a fixed
+// instant, so the test PKI can use fixed-expiry certificates instead of certificates that must
+// be valid "right now" (a test that rots on a timer). The cost is that a swift-certificates
+// minor bump can break this symbol — if it does, that is understood, not mysterious.
 @_spi(FixedExpiryValidationTime) import X509
 
 #if canImport(FoundationEssentials)

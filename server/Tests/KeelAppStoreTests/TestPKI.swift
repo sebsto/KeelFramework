@@ -3,7 +3,7 @@ import Foundation
 import SwiftASN1
 import X509
 
-@testable import KeelIAP
+@testable import KeelAppStore
 
 /// A minimal self-signed root → leaf PKI plus JWS builders, so verification is tested
 /// against an *injected* pinned root — the design that makes it testable — rather than

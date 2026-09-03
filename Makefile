@@ -95,7 +95,7 @@ lint: lint-swift lint-cdk ## Lint Swift and TypeScript
 # machine-written, builds with relaxed settings, and is not ours to reformat.
 SERVER_LINT_DIRS := $(addprefix $(SERVER_DIR)/Sources/,KeelServer KeelServerTesting \
 	KeelServerDynamoDB KeelRouter KeelLambda KeelAuthorizerLambda keel-cli \
-	KeelIAP KeelIAPDynamoDB KeelIAPRouter)
+	KeelAppStore KeelAppStoreTesting KeelAppStoreRouter)
 
 .PHONY: lint-swift
 lint-swift: ## swift-format in lint mode (warnings are errors in the build anyway)

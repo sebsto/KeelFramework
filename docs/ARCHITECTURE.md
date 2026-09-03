@@ -115,9 +115,7 @@ Optional, mounted only when the app opts in:
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/v1/purchase` | verify a StoreKit 2 JWS, grant an entitlement |
-| `GET` | `/v1/entitlement` | current entitlement for the caller |
-| `POST` | `/v1/appstore-notification` | App Store Server Notifications v2 (refunds, renewals) |
+| `POST` | `/v1/appstore-notification` | verify an App Store Server Notification v2 (verification only — the app decides what it means) |
 
 ### `GET /v1/bootstrap`
 
@@ -286,8 +284,6 @@ One table. `pk` (String), `sk` (String), TTL attribute `ttl`, on-demand billing,
 | OS spread | `AGG#OS#2026-08` | `26.1` | `count` | +400 d |
 | Platform spread | `AGG#PLAT#2026-08` | `ios` | `count` | +400 d |
 | App dimension | `AGG#DIM#profiles#2026-08` | `3-5` | `count` | +400 d |
-| Entitlement (IAP) | `ENT#<userId>` | `<productId>` | `payload` (JSON string) | — |
-| Transaction owner (IAP) | `TXN#<originalTransactionId>` | `owner` | `payload` (JSON string) | — |
 
 Every `AGG#` write is a single `UpdateItem` with `ADD #count :one`, which is an upsert and
 is atomic across any number of concurrent devices — no read-modify-write, no conditional
@@ -339,13 +335,12 @@ partial write failure increments one counter and not the other — the discrepan
 visible rather than adjusted. A stats page that quietly corrects its own numbers is worse than
 one that is occasionally off by one.
 
-The two IAP item kinds exist only for apps that mount the purchase routes. `TXN#` is the
-reverse pointer: an App Store server notification names a transaction lineage, never a
-user, so revocation needs `originalTransactionId → (userId, productId)` — written at
-purchase time, which keeps that lookup a `GetItem` instead of a GSI. The `ENT#` items are
-the one part of the table keyed by a person; they are opt-in, live under their own prefix,
-and no telemetry path reads or writes them (§9 point 4 is enforced by module boundaries:
-`KeelServer` cannot see them, `KeelIAP` cannot see the counters' write path).
+Keel writes none of the item kinds a purchase would imply. `KeelAppStore` verifies Apple's
+paperwork and stores nothing — no `ENT#` entitlement item, no `TXN#` reverse pointer, no
+`dynamodb:PutItem` grant. An app that records what a purchase grants owns those items in its own
+key space, off its own `mount(appStore:)` handler; that is app data, not framework data, so §9
+point 4 (no telemetry path reads a per-person row) still holds by construction — the framework
+has no per-person row at all.
 
 Every partition name is derivable from a request or a clock. That is what keeps the read path
 `Query`-only: a key that needed discovery would need a GSI, and a GSI on a counter table is a
@@ -476,7 +471,7 @@ adapters alike; and the pure decision logic: `PingFlags.compute`, `VersionGate.e
   which is the bug both existing apps had to fix), UTC day/month dedup, the conversion
   ratchet, and a demo-mode guard for App Review builds that must not touch the network.
 - `EntitlementService` — StoreKit 2 → `LicenseState` (`free`/`trial`/`paid`), offline
-  tolerant, optionally cross-checked against `/v1/entitlement`.
+  tolerant, on-device (the framework holds no server-side entitlement to cross-check).
 - SwiftUI: `.keelBootstrap(_:)`, `.keelVersionGate(_:)` → `UpdateRequiredView` (blocking),
   `SoftUpdateBanner` (dismissible), `MaintenanceView`; and `TelemetryToggle` for Settings.
 
@@ -499,7 +494,7 @@ KeelServerTesting     InMemoryCounterStore, InMemoryConfigStore, fixed clocks
 KeelLambda            lambda-kit router + swift-configuration wiring (an executable
                       you can deploy as-is)
 KeelAuthorizerLambda  shared-secret API Gateway authorizer
-KeelIAP               App Store JWS verification, entitlements
+KeelAppStore          App Store JWS + notification verification (no entitlement model)
 keel-cli              config get/set, stats dump, scaffolding
 ```
 
@@ -540,8 +535,9 @@ dropped alias is a shipped client's route answering 404 — so it is logged at e
 start (observed in Maxi80). `scripts/generate-soto.sh` emits a minimal DynamoDB client from
 soto's generator that depends only on `SotoCore`, which keeps the binary small and the cold
 start short. lambda-kit's `DynamoQueries` `@Table` macro is not used for the counter table —
-every write there is an `ADD` on a key the schema builds, which the macro doesn't model —
-but it is a good fit for the IAP entitlement items and may be adopted there.
+every write there is an `ADD` on a key the schema builds, which the macro doesn't model. (An
+earlier design floated it for IAP entitlement items; those were removed from the framework —
+`KeelAppStore` verifies and stores nothing — so there is no framework item left for it to model.)
 
 ---
 

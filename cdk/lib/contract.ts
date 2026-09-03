@@ -28,12 +28,18 @@ export const KEEL_CORE_ROUTES: readonly KeelRoute[] = [
   { method: "GET", path: "/v1/stats", optional: false, maxAgeSeconds: 300 },
 ];
 
-/** In-app-purchase routes, mounted only when `KeelBackend` is given `iap`. */
-export const KEEL_IAP_ROUTES: readonly KeelRoute[] = [
-  { method: "POST", path: "/v1/purchase", optional: true },
-  { method: "GET", path: "/v1/entitlement", optional: true },
-  { method: "POST", path: "/v1/appstore-notification", optional: true },
-];
+/**
+ * The App Store server-notification route, mounted only when `KeelBackend` is given
+ * `appStoreNotifications`. Verification-only: the framework verifies Apple's JWS and hands the
+ * app a verified payload — it does not model purchases or entitlements. Always unauthenticated
+ * when mounted, because Apple's servers hold no credentials of ours and the JWS signature is the
+ * boundary.
+ */
+export const KEEL_APPSTORE_NOTIFICATION_ROUTE: KeelRoute = {
+  method: "POST",
+  path: "/v1/appstore-notification",
+  optional: true,
+};
 
 /**
  * DynamoDB attribute names. The table is single-table with a `pk`/`sk` pair and a

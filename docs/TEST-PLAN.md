@@ -330,19 +330,26 @@ Notes:
 
 ---
 
-## 9. IAP (sandbox — only if the app sells something)
+## 9. App Store notification verification (sandbox — only if the server reacts to Apple)
 
-Requires a real App Store Connect app with sandbox IAP products. Skip if you have none —
-the IAP layer is fully tested by the automated suite; this section verifies the wiring
-end-to-end.
+Requires a real App Store Connect app with sandbox products and a server that mounts
+`builder.mount(appStore:)`. Skip if your server does not react to Apple's notifications —
+the `KeelAppStore` verification layer is fully covered by the automated suite (JWS chain,
+open-enum types, `mount(appStore:)` round-trip); this section verifies the live wiring.
+
+Note there are **no** `/v1/purchase` or `/v1/entitlement` routes to test: the framework
+verifies App Store paperwork and stores nothing. What a purchase grants is app data, tested
+by the app, not here.
 
 ### Prerequisites
 
 1. An app registered in App Store Connect with at least one product (e.g. `com.example.myapp.pro`)
 2. A sandbox tester account (App Store Connect → Users → Sandbox Testers)
 3. The device signed into that sandbox account (Settings → App Store → Sandbox Account)
+4. A server that mounts the notification route (the ready-made `KeelLambda` does this when
+   `appStoreNotifications` is set; an app with real side effects writes its own handler)
 
-### Deploy with IAP enabled
+### Deploy with notifications enabled
 
 Edit `lib/sample-app-stack.ts`:
 
@@ -352,7 +359,7 @@ const backend = new KeelBackend(this, "Backend", {
   envName: props.envName,
   auth: KeelAuth.none(),
   lambdaPackagePath: "../../../server",
-  iap: {
+  appStoreNotifications: {
     bundleId: "com.example.myapp",          // your real bundle id
     productIds: ["com.example.myapp.pro"],   // your real product id(s)
   },
@@ -370,64 +377,50 @@ App → App Information → App Store Server Notifications) at:
 ```sh
 export BASE=<ApiBaseUrl>
 
-# 1. POST /v1/purchase — send a real JWS from StoreKit 2's Transaction.jwsRepresentation
-#    (capture it from the device with a debug breakpoint or os_log)
-curl -si -X POST "$BASE/v1/purchase" \
+# 1. The route exists and rejects an unverifiable payload (no auth required — it is public).
+curl -si -X POST "$BASE/v1/appstore-notification" \
   -H 'Content-Type: application/json' \
-  -d '{"userId":"sandbox-user-1","jws":"<paste the real JWS here>"}'
-# → 200; body has entitlements array with state "active", isEntitled: true
+  -d '{"signedPayload":"not.a.real.jws"}'
+# → non-2xx; the specific reason is logged, never returned
 
-# 2. GET /v1/entitlement — read it back
-curl -si "$BASE/v1/entitlement?userId=sandbox-user-1"
-# → 200; same entitlement
-
-# 3. Replay the same JWS (idempotency)
-curl -si -X POST "$BASE/v1/purchase" \
+# 2. A malformed body is a 400.
+curl -si -X POST "$BASE/v1/appstore-notification" \
   -H 'Content-Type: application/json' \
-  -d '{"userId":"sandbox-user-1","jws":"<same JWS>"}'
-# → 200; still one entitlement, not two
-
-# 4. Garbage JWS
-curl -si -X POST "$BASE/v1/purchase" \
-  -H 'Content-Type: application/json' \
-  -d '{"userId":"sandbox-user-1","jws":"not.a.real.jws"}'
+  -d '{}'
 # → 400, "code":"validation_error"
 
-# 5. Unknown user
-curl -si "$BASE/v1/entitlement?userId=nobody"
-# → 200, empty entitlements list (not 404)
+# 3. Sandbox refund: trigger from App Store Connect → Sandbox → Manage Testers →
+#    select tester → view purchases → request refund. Apple sends a REFUND notification
+#    to /v1/appstore-notification; a genuine payload verifies and the route acks 200.
+#    Confirm in the function logs:
+aws logs tail "/aws/lambda/$(aws cloudformation describe-stacks \
+  --stack-name SampleApp-$ENV --query \
+  'Stacks[0].Outputs[?OutputKey==`FunctionName`].OutputValue' --output text)" \
+  --since 5m --region eu-central-1
+# → a "Verified App Store notification" log line with the product id
 
-# 6. Sandbox refund: trigger from App Store Connect → Sandbox → Manage Testers →
-#    select tester → view purchases → request refund.
-#    The notification should arrive at /v1/appstore-notification and flip the
-#    entitlement to "revoked". Verify:
-curl -si "$BASE/v1/entitlement?userId=sandbox-user-1"
-# → state: "revoked", isEntitled: false
+# 4. No entitlement items are written by the framework — verify the table has no ENT#/TXN#
+#    rows (any that exist are your app's, not Keel's):
+aws dynamodb scan --table-name $TABLE_NAME --region eu-central-1 \
+  --filter-expression "begins_with(pk, :ent) OR begins_with(pk, :txn)" \
+  --expression-attribute-values '{":ent":{"S":"ENT#"},":txn":{"S":"TXN#"}}' \
+  --query 'Count'
+# → 0 (the framework writes none)
 
-# 7. Check the DynamoDB items
-aws dynamodb query --table-name $TABLE_NAME --region eu-central-1 \
-  --key-condition-expression "pk = :pk" \
-  --expression-attribute-values '{":pk":{"S":"ENT#sandbox-user-1"}}' \
-  --query 'Items[*].{pk:pk.S,sk:sk.S,state:state.S}' --output table
-
-# 8. In-app: EntitlementService.licenseState should flip to .paid after purchase,
-#    .free after refund (observe in the debug console)
+# 5. In-app: EntitlementService.licenseState still reflects StoreKit locally —
+#    .paid after purchase, .free after refund (observe in the debug console)
 ```
 
 | W | F | Check | Expected |
 |---|---|---|---|
-| ☐ | ☐ | Sandbox purchase → `POST /v1/purchase` with the JWS | 200; entitlement `active`, `isEntitled: true`, `environment: "Sandbox"` |
-| ☐ | ☐ | `GET /v1/entitlement?userId=…` | same entitlement |
-| ☐ | ☐ | Replay the same JWS | still one entitlement (idempotent) |
-| ☐ | ☐ | Garbage JWS | 400, one undifferentiated `validation_error` |
-| ☐ | ☐ | Unknown user | 200, empty list (not 404) |
-| ☐ | ☐ | Sandbox refund (App Store Connect → refund test) | notification arrives; entitlement flips to `revoked` |
-| ☐ | ☐ | `ENT#`/`TXN#` items in the table | both present, readable JSON payloads |
-| ☐ | ☐ | EntitlementService in-app | `licenseState` flips to `.paid` after purchase, `.free` after refund |
+| ☐ | ☐ | `POST /v1/appstore-notification` with garbage JWS | non-2xx; one undifferentiated rejection, reason only in logs |
+| ☐ | ☐ | Malformed body | 400 `validation_error` |
+| ☐ | ☐ | Route is public under any auth mode | reachable with no credentials |
+| ☐ | ☐ | Sandbox refund → notification | verifies; 200 ack; "Verified App Store notification" logged |
+| ☐ | ☐ | No `ENT#`/`TXN#` framework items | scan returns 0 — the framework stores nothing |
+| ☐ | ☐ | EntitlementService in-app | `licenseState` flips to `.paid` after purchase, `.free` after refund (on-device) |
 
-Notes: **Skipped** — no IAP products configured for the SampleApp.
-
----
+Notes: **Skipped** — no App Store products configured for the SampleApp.
 
 ## 10. Custom domain (before first prod release)
 
@@ -546,6 +539,6 @@ Notes:
 
 | | |
 |---|---|
-| Sections passed | 9/11 (§9 IAP and §10 custom domain skipped — no products / no domain configured) |
+| Sections passed | 9/11 (§9 App Store verification and §10 custom domain skipped — no products / no domain configured) |
 | Blocking failures | none |
 | Ready to retrofit the first app? | yes |

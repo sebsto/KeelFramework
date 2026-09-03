@@ -111,57 +111,6 @@ public struct BackendClient: Sendable {
         try await get(path: Keel.Route.stats.rawValue, query: []).0
     }
 
-    /// `POST /v1/purchase` — report a StoreKit transaction to a backend with IAP mounted.
-    ///
-    /// Throws, unlike the ping: the caller is a purchase flow, and it must know whether
-    /// the server recorded the entitlement before it tells the user everything worked.
-    public func purchase(
-        userId: String, jws: String
-    ) async throws(KeelClientError) -> EntitlementResponse {
-        let body: Data
-        do {
-            body = try WireJSON.encoder().encode(PurchaseRequest(userId: userId, jws: jws))
-        } catch {
-            throw .malformedResponse
-        }
-        let response: HTTPResponseData
-        do {
-            response = try await withBudget {
-                var request = HTTPRequestData(
-                    method: .post,
-                    url: url(path: "/v1/purchase", query: []),
-                    headers: ["Content-Type": "application/json"],
-                    body: body)
-                if let header = await authorization.headerValue() {
-                    request.headers["Authorization"] = header
-                }
-                return try await transport.send(request)
-            }
-        } catch let error as KeelClientError {
-            throw error
-        } catch {
-            throw .notHTTP
-        }
-        guard (200..<300).contains(response.statusCode) else {
-            let details = try? WireJSON.decoder().decode(ErrorResponse.self, from: response.body)
-            throw .serverError(statusCode: response.statusCode, code: details?.code)
-        }
-        guard
-            let decoded = try? WireJSON.decoder().decode(
-                EntitlementResponse.self, from: response.body)
-        else {
-            throw .malformedResponse
-        }
-        return decoded
-    }
-
-    /// `GET /v1/entitlement` — what the server holds for one user.
-    public func entitlements(
-        userId: String
-    ) async throws(KeelClientError) -> EntitlementResponse {
-        try await get(path: "/v1/entitlement", query: [("userId", userId)]).0
-    }
-
     // MARK: - Plumbing
 
     private func get<Response: Decodable & Sendable>(
