@@ -1,9 +1,9 @@
 public import KeelCore
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 // MARK: - Credentials
@@ -125,10 +125,15 @@ public struct KeelSigV4Transport: HTTPTransport {
 
         // Build the header map that will be signed.
         // Start from the request's existing headers so Content-Type etc. are preserved.
+        //
+        // For execute-api (API Gateway IAM auth) the signed set is host + x-amz-date
+        // (+ x-amz-security-token when a session token is present). The payload hash is
+        // carried in the final line of the canonical request; x-amz-content-sha256 is an
+        // S3-ism and is deliberately NOT added to the signed headers here — adding it would
+        // change SignedHeaders and therefore the signature.
         var headers = request.headers
         headers["host"] = request.url.host ?? ""
         headers["x-amz-date"] = dateLong
-        headers["x-amz-content-sha256"] = bodyHash
         if let token = creds.sessionToken {
             headers["x-amz-security-token"] = token
         }
@@ -240,6 +245,10 @@ public struct KeelSigV4Transport: HTTPTransport {
 }
 
 private extension Digest {
+    var hexString: String { map { String(format: "%02x", $0) }.joined() }
+}
+
+private extension MessageAuthenticationCode {
     var hexString: String { map { String(format: "%02x", $0) }.joined() }
 }
 
