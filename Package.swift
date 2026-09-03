@@ -61,8 +61,10 @@ let package = Package(
         .testTarget(
             name: "KeelCoreTests",
             dependencies: ["KeelCore"],
-            // Phase 1 adds the golden-JSON fixtures the server suite reads too.
-            // resources: [.copy("Fixtures")],
+            // Fixtures are wired via #filePath walking in Tests/KeelCoreTests/Fixture.swift —
+            // the loader walks up to Fixtures/ at the repo root, so no resource bundle copy
+            // is needed. Both KeelCoreTests and KeelServerTests share the same files this way,
+            // which is the point: a renamed field breaks both suites at once.
             swiftSettings: strictSettings
         ),
         .testTarget(
