@@ -97,6 +97,8 @@ let package = Package(
                 "KeelServer",
                 "KeelRouter",
                 "KeelServerTesting",
+                .product(name: "AWSLambdaEvents", package: "swift-aws-lambda-events"),
+                .product(name: "Routing", package: "lambda-kit"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "InMemoryLogging", package: "swift-log"),
             ],

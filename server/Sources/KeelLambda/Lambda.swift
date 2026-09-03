@@ -36,6 +36,61 @@ struct KeelLambda: LambdaHandler {
             "Initializing KeelLambda",
             metadata: ["table": .string(settings.tableName), "version": .string(Keel.version)])
 
+        let builder = Self.makeRouterBuilder(settings: settings, logger: logger)
+        self.router = builder.build()
+    }
+
+    func handle(
+        _ event: APIGatewayV2Request, context: LambdaContext
+    ) async throws -> APIGatewayV2Response {
+        let response = await router.handle(HTTPRequest(event: event), logger: context.logger)
+        return APIGatewayV2Response(
+            statusCode: response.statusCode,
+            headers: response.headers,
+            body: response.body)
+    }
+
+    static func main() async throws {
+        let handler = try KeelLambda()
+        // The custom decoder is load-bearing: lambda-kit's router keys on the `proxy` path
+        // parameter, which API Gateway sets only on `{proxy+}` routes. Keel's CDK declares
+        // *explicit* routes — that is what makes per-route auth (`publicRoutes`) expressible —
+        // so the decoder synthesizes `proxy` from `rawPath` before the event is typed.
+        let runtime = LambdaRuntime(
+            encoder: LambdaJSONOutputEncoder<APIGatewayV2Response>(JSONEncoder()),
+            decoder: ProxySynthesizingDecoder(),
+            body: handler.handle)
+        try await runtime.run()
+    }
+
+    // MARK: - Router wiring
+
+    /// Build the router for a Keel Lambda, registering the framework routes and (when
+    /// configured) the IAP routes.
+    ///
+    /// This is the reference wiring for an app that needs its own routes alongside Keel's.
+    /// It is `internal` to this **executable** target, so an app cannot import or call it —
+    /// an app reproduces these steps in its own `main.swift` against the framework's public
+    /// **library** targets (`KeelServer` handlers + `ConfigCache`, `KeelServerDynamoDB` stores,
+    /// and `KeelRouter` for the `KeelRouter` init and the `builder.mount(keel:)` seam):
+    ///
+    /// ```swift
+    /// let keel = KeelRouter(bootstrap: …, ping: …, stats: …, corsConfig: …, logger: logger)
+    /// let builder = HTTPRouterBuilder()
+    /// builder.mount(keel: keel)
+    /// builder.get("/v1/my-route") { request, _ in … }
+    /// let router = builder.build()
+    /// ```
+    ///
+    /// See `docs/INTEGRATION.md` §"App-owned routes" for the full worked example, and
+    /// `AdopterSeamTests` for the compile-time guard that the seam stays importable.
+    ///
+    /// - Parameters:
+    ///   - settings: Resolved deployment configuration (from the environment at cold start).
+    ///   - logger: The function logger; entries are tagged with the route that produced them.
+    /// - Returns: A configured builder with all Keel routes (and IAP routes, when enabled)
+    ///   already mounted. Register additional routes, then call `.build()`.
+    static func makeRouterBuilder(settings: Settings, logger: Logger) -> HTTPRouterBuilder {
         let counters: any CounterStore
         let configs: any ConfigStore
         #if DEBUG
@@ -48,10 +103,10 @@ struct KeelLambda: LambdaHandler {
             counters = store
             configs = store
         } else {
-            (counters, configs) = Self.dynamoDBStores(tableName: settings.tableName)
+            (counters, configs) = dynamoDBStores(tableName: settings.tableName)
         }
         #else
-        (counters, configs) = Self.dynamoDBStores(tableName: settings.tableName)
+        (counters, configs) = dynamoDBStores(tableName: settings.tableName)
         #endif
 
         let cache = ConfigCache(
@@ -101,30 +156,7 @@ struct KeelLambda: LambdaHandler {
             logger.info("IAP routes mounted", metadata: ["bundleId": .string(iap.bundleId)])
         }
 
-        self.router = builder.build()
-    }
-
-    func handle(
-        _ event: APIGatewayV2Request, context: LambdaContext
-    ) async throws -> APIGatewayV2Response {
-        let response = await router.handle(HTTPRequest(event: event), logger: context.logger)
-        return APIGatewayV2Response(
-            statusCode: response.statusCode,
-            headers: response.headers,
-            body: response.body)
-    }
-
-    static func main() async throws {
-        let handler = try KeelLambda()
-        // The custom decoder is load-bearing: lambda-kit's router keys on the `proxy` path
-        // parameter, which API Gateway sets only on `{proxy+}` routes. Keel's CDK declares
-        // *explicit* routes — that is what makes per-route auth (`publicRoutes`) expressible —
-        // so the decoder synthesizes `proxy` from `rawPath` before the event is typed.
-        let runtime = LambdaRuntime(
-            encoder: LambdaJSONOutputEncoder<APIGatewayV2Response>(JSONEncoder()),
-            decoder: ProxySynthesizingDecoder(),
-            body: handler.handle)
-        try await runtime.run()
+        return builder
     }
 
     /// One `AWSClient` per process, created at cold start and reused across invocations — it
