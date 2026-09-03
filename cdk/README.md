@@ -47,6 +47,29 @@ function so `cdk synth` still works.
 `publicRoutes` opts individual paths out of whichever mode you chose, so the dashboard can
 read `/v1/stats` while the rest of the API stays authorized.
 
+## Migrating an existing table
+
+An app already running its own counters hands its live table in as `existingTable`, and the
+construct uses it instead of creating one — no orphan table left behind, and the existing
+`AGG#` history stays where the dashboard already reads it.
+
+```ts
+existingTable: dynamodb.Table.fromTableName(this, "Existing", "myapp-prod-counters"),
+```
+
+The table has to carry the contract's key schema (`pk`/`sk`, TTL on `ttl`) — CDK cannot check
+that for an imported resource. The same least-privilege grants are applied either way.
+
+## Throttling
+
+The default stage gets `{ rateLimit: 20, burstLimit: 40 }` unless `throttling` says otherwise.
+`/v1/ping` is public in every deployment, and a client pings at most once per UTC day, so 20
+requests/sec sits far above any honest traffic while still capping a runaway client:
+
+```ts
+throttling: { rateLimit: 5, burstLimit: 10 }
+```
+
 ## Custom domain
 
 Shipped clients compile in their base URL, so production must not use the generated

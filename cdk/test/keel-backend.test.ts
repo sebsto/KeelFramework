@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as cdk from "aws-cdk-lib";
 import { Annotations, Match, Template } from "aws-cdk-lib/assertions";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 
 import type { KeelBackendProps } from "../lib";
 import { KeelAuth, KeelBackend } from "../lib";
@@ -63,6 +64,74 @@ describe("KeelBackend table", () => {
     expect(
       table.Properties.PointInTimeRecoverySpecification.PointInTimeRecoveryEnabled,
     ).toBe(true);
+  });
+});
+
+describe("KeelBackend existing table", () => {
+  const existingArn = "arn:aws:dynamodb:eu-central-1:123456789012:table/existing-keel";
+
+  function synthWithImportedTable() {
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, "Test", {
+      env: { account: "123456789012", region: "eu-central-1" },
+    });
+    const existingTable = dynamodb.Table.fromTableArn(stack, "Imported", existingArn);
+    new KeelBackend(stack, "Backend", {
+      appName: "myapp",
+      envName: "dev",
+      existingTable,
+    });
+    return { template: Template.fromStack(stack), stack };
+  }
+
+  test("an imported table means no table is synthesized", () => {
+    const { template } = synthWithImportedTable();
+    template.resourceCountIs("AWS::DynamoDB::Table", 0);
+  });
+
+  test("the same least-privilege grants land on the imported table", () => {
+    const { template } = synthWithImportedTable();
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: ["dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:GetItem"],
+            Effect: "Allow",
+          }),
+        ]),
+      },
+    });
+    // The grant targets the imported ARN, not a CloudFormation-managed one.
+    const policies = JSON.stringify(template.findResources("AWS::IAM::Policy"));
+    expect(policies).toContain("existing-keel");
+    expect(policies).not.toContain("dynamodb:Scan");
+  });
+
+  test("without the prop the construct still owns exactly one table", () => {
+    const { template } = synth();
+    template.resourceCountIs("AWS::DynamoDB::Table", 1);
+  });
+});
+
+describe("KeelBackend throttling", () => {
+  test("the public ping endpoint is throttled by default", () => {
+    const { template } = synth();
+    template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
+      DefaultRouteSettings: Match.objectLike({
+        ThrottlingRateLimit: 20,
+        ThrottlingBurstLimit: 40,
+      }),
+    });
+  });
+
+  test("an app can tighten or raise the limits", () => {
+    const { template } = synth({ throttling: { rateLimit: 5, burstLimit: 10 } });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
+      DefaultRouteSettings: Match.objectLike({
+        ThrottlingRateLimit: 5,
+        ThrottlingBurstLimit: 10,
+      }),
+    });
   });
 });
 
