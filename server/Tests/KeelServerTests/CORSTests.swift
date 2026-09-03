@@ -97,4 +97,37 @@ struct CORSTests {
             allowedOrigins: ["https://a.com", "https://b.com", "https://c.com"])
         #expect(cors.match("https://d.com") == nil)
     }
+
+    // MARK: - Preflight Allow-Headers (SigV4 / IAM route support)
+
+    // The router registers an OPTIONS preflight for every route, including the AWS_IAM
+    // `/v1/ping` route. A browser signing that route with SigV4 must be allowed to send the
+    // `X-Amz-*` headers, or the preflight it has to clear first would reject them. These pin
+    // the advertised set so a future edit that drops one breaks here instead of in a browser.
+
+    @Test("Preflight Allow-Headers advertises the SigV4 headers an IAM route needs")
+    func preflightAllowsSigV4Headers() {
+        let advertised = Self.advertisedAllowHeaders()
+        for required in ["authorization", "x-amz-date", "x-amz-security-token"] {
+            #expect(
+                advertised.contains(required),
+                "Preflight Allow-Headers must include \(required) so a browser can preflight a SigV4-signed IAM route"
+            )
+        }
+    }
+
+    @Test("Preflight Allow-Headers keeps Content-Type for JSON bodies")
+    func preflightAllowsContentType() {
+        #expect(Self.advertisedAllowHeaders().contains("content-type"))
+    }
+
+    /// Parse the comma-separated Allow-Headers value into a lowercased, whitespace-free set.
+    /// Stdlib only — this test target does not import Foundation.
+    private static func advertisedAllowHeaders() -> Set<String> {
+        Set(
+            KeelRouter.preflightAllowHeaders
+                .lowercased()
+                .split(separator: ",")
+                .map { String($0.filter { !$0.isWhitespace }) })
+    }
 }

@@ -162,11 +162,29 @@ public struct KeelRouter: Sendable {
         }
     }
 
+    /// Request headers a browser is allowed to send on a preflighted cross-origin request.
+    ///
+    /// Beyond `Content-Type`/`Authorization`, this lists the SigV4 headers an AWS_IAM route
+    /// requires. `registerPreflight` is registered for `/v1/ping` (an `AWS_IAM` route), so a
+    /// browser client that signs requests with SigV4 — long-lived or, via `X-Amz-Security-Token`,
+    /// temporary credentials — must be able to send `X-Amz-Date` and friends to clear preflight.
+    /// Omitting them would make the preflight we register for the IAM route unusable from a
+    /// browser. `X-Amz-Content-Sha256` is included because AWS SDK signers commonly send it even
+    /// though Keel's own reference transport does not sign it. Header-name matching is
+    /// case-insensitive per the Fetch spec, so the casing here is only cosmetic.
+    static let preflightAllowHeaders =
+        "Content-Type, Authorization, X-Amz-Date, X-Amz-Security-Token, X-Amz-Content-Sha256"
+
     /// Register an OPTIONS handler at `path` for the CORS preflight flow.
     ///
     /// The handler echoes the request `Origin` only if it is in the allowlist. An unknown
     /// or disallowed origin returns a bare 403 with no CORS headers — the browser will see
     /// the preflight fail and will not send the real request.
+    ///
+    /// `request.headers` is lambda-kit's case-insensitive `Headers` type (names are normalized
+    /// to lowercase on both insertion and lookup), so the lowercase `"origin"` key matches a
+    /// browser's capitalized `Origin` header. This is unlike `KeelAuthorizerLambda`, which reads
+    /// the raw `[String: String]` authorizer event and therefore needs its dual-case lookup.
     private func registerPreflight(
         at path: String, methods: String, on builder: HTTPRouterBuilder
     ) {
@@ -181,7 +199,7 @@ public struct KeelRouter: Sendable {
                     "Access-Control-Allow-Origin": matched,
                     "Vary": "Origin",
                     "Access-Control-Allow-Methods": "\(methods), OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+                    "Access-Control-Allow-Headers": Self.preflightAllowHeaders,
                 ])
         }
     }
