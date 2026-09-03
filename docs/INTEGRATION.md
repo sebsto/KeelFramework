@@ -1504,9 +1504,22 @@ not fork `KeelLambda` for this. Instead you write your own executable that depen
 registers its own routes before calling `.build()`.
 
 `server/Sources/KeelLambda/Lambda.swift` is the reference. Its `makeRouterBuilder`
-method encapsulates the wiring (stores, ConfigCache, KeelRouter, IAP), returns an
-`HTTPRouterBuilder` with all framework routes already mounted, and lets you add routes
-before the final `.build()` call.
+method shows the wiring (stores, ConfigCache, `KeelRouter`, IAP) end to end — but it
+lives in the `KeelLambda` **executable** target and is `internal`, so you cannot import
+it. Reproduce the same steps in your own executable against the framework's **library**
+targets, whose types are all `public`:
+
+- `KeelServer` — the handlers (`BootstrapHandler`, `PingHandler`, `StatsHandler`),
+  `ConfigCache`, and the `CounterStore` / `ConfigStore` protocols.
+- `KeelServerDynamoDB` — `DynamoDBCounterStore` / `DynamoDBConfigStore`.
+- `KeelRouter` — the `KeelRouter` type (public init) and the `builder.mount(keel:)`
+  seam that registers Keel's routes on a shared `HTTPRouterBuilder`.
+
+The importable seam is therefore: build a `KeelRouter` from the public init, call
+`builder.mount(keel:)`, then register your own routes before `.build()`. That path is
+guarded by a compile-time test (`AdopterSeamTests`) that imports only these library
+targets — if a future change stranded the seam back in the executable, that test would
+fail to compile.
 
 ## Pointing the CDK construct at your executable
 
@@ -1573,8 +1586,30 @@ struct OrthancLambda: LambdaHandler {
         var logger = Logger(label: "orthanc")
         logger.logLevel = settings.logLevel
 
-        // 1. Get the builder with all Keel routes already mounted
-        let builder = KeelLambda.makeRouterBuilder(settings: settings, logger: logger)
+        // 1. Build the Keel router from public library API and mount it on a shared builder.
+        //    (KeelLambda.makeRouterBuilder is the reference for this wiring, but it lives in an
+        //    executable target and cannot be imported — reproduce it here against the
+        //    KeelServer / KeelRouter / KeelServerDynamoDB libraries. `settings` is your app's
+        //    own configuration type.)
+        let dynamoDB = DynamoDB(client: AWSClient())
+        let counters = DynamoDBCounterStore(dynamoDB: dynamoDB, tableName: settings.tableName)
+        let configs = DynamoDBConfigStore(dynamoDB: dynamoDB, tableName: settings.tableName)
+        let cache = ConfigCache(
+            store: configs, ttl: Double(settings.configTTLSeconds), logger: logger)
+        let keel = KeelRouter(
+            bootstrap: BootstrapHandler(
+                cache: cache, flagOverride: settings.flagOverride, logger: logger),
+            ping: PingHandler(store: counters, cache: cache, logger: logger),
+            stats: StatsHandler(
+                store: counters, cache: cache,
+                dauWindowDays: settings.dauWindowDays,
+                mauWindowMonths: settings.mauWindowMonths,
+                logger: logger),
+            corsConfig: CORSConfig(allowedOrigins: settings.allowedOrigins),
+            logger: logger)
+
+        let builder = HTTPRouterBuilder()
+        builder.mount(keel: keel)   // the importable seam — Keel's routes on a shared builder
 
         // 2. Orthanc-specific dependencies
         let dynamoDB = DynamoDB(client: AWSClient())
