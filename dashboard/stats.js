@@ -311,24 +311,31 @@ function renderBars(figure, rows, opts = {}) {
 
 // ─── Cohorts ────────────────────────────────────────────────────────────────
 
-// Three lanes. Paid is drawn last — lit, with the area and the dot; trial and
-// free sit quietly underneath. Trial is omitted from the drawing entirely when
-// the whole window has none, so an app without trials sees two lanes, not a
-// zero line lying on the axis.
+// Up to three lanes, drawn bottom-up. Paid is last — the lit one, with the area
+// and the dot; free and trial sit quietly underneath. A cohort is dropped from
+// the drawing (and, via syncLegend, from the legend) whenever every point in the
+// current window is zero, so an app that never uses one — no trials, say — shows
+// two lanes instead of a flat line pinned to the axis. It's a pure render-time
+// call with no config, and self-correcting: the lane reappears on its own the
+// first day a real value lands.
+function drawnCohorts(points, defs) {
+  return defs.filter((c) => points.some((p) => (p[c.key] ?? 0) > 0));
+}
+
 function cohortSeries(points) {
-  const hasTrial = points.some((p) => (p.trial ?? 0) > 0);
-  const lanes = [{ key: "free", color: "--cohort-free" }];
-  if (hasTrial) lanes.push({ key: "trial", color: "--cohort-trial" });
-  lanes.push({ key: "paid", color: "--cohort-paid", area: true, dot: true });
-  return lanes;
+  return drawnCohorts(points, [
+    { key: "free", color: "--cohort-free" },
+    { key: "trial", color: "--cohort-trial" },
+    { key: "paid", color: "--cohort-paid", area: true, dot: true },
+  ]);
 }
 
 function cohortStack(points) {
-  const hasTrial = points.some((p) => (p.trial ?? 0) > 0);
-  const stack = [{ key: "free", color: "--cohort-free" }];
-  if (hasTrial) stack.push({ key: "trial", color: "--cohort-trial" });
-  stack.push({ key: "paid", color: "--cohort-paid" });
-  return stack;
+  return drawnCohorts(points, [
+    { key: "free", color: "--cohort-free" },
+    { key: "trial", color: "--cohort-trial" },
+    { key: "paid", color: "--cohort-paid" },
+  ]);
 }
 
 // Show/hide the legend entries to match the lanes actually drawn.

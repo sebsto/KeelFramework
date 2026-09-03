@@ -78,6 +78,21 @@ special-case it.
 Orthanc's stats page is replaced by `dashboard/` with its `tokens.css` set to Orthanc's
 brand tokens — the renderer *is* Orthanc's, merged with odvpn's.
 
+**Profile-spread partition rename:** Keel changed the storage key for profile spreads
+from `AGG#PROFILES#2026-08` to `AGG#DIM#profiles#2026-08`. This means `StatsHandler`
+will not see historical profile data even though the headline says "history survives"
+(the counter keys themselves are untouched, but the profile-spread series sits under a
+different prefix). The fix is a one-time copy — roughly four items per month — or adding
+a name alias in `StatsHandler` that reads both keys and merges results. The copy is
+simpler; the alias survives future key renames more gracefully.
+
+**Orthanc does not mount `KeelIAP`.** Orthanc's purchase flow runs entirely on-device
+(StoreKit receipt validation + Ed25519 server signature), and the published privacy
+statement says the table holds no per-device row. Mounting `KeelIAP` would add exactly
+that row, falsifying the privacy claim. Orthanc keeps its own `LicenseHandlers` and
+`VPNBilling` is not applicable here — the distinction matters because `KeelIAP` is
+designed for entitlement tracking, not for Orthanc's signature-and-forget model.
+
 ## odvpn
 
 | Existing | Keel |
@@ -92,10 +107,26 @@ odvpn is the "large app adopts the telemetry/bootstrap slice only" case: its ele
 stacks keep their jobs, `KeelBackend` replaces just the stats table + ping/stats routes,
 and its `usage.js` page is retired for `dashboard/`.
 
+**odvpn does not mount `KeelIAP` either.** Its purchase model is credit-based (buy
+blocks of credits, deduct on each VPN session), which has no mapping onto `KeelIAP`'s
+boolean entitlement model. `VPNBilling` stays as-is; Keel covers only the
+bootstrap/telemetry/stats slice.
+
 ## What no retrofit needs
 
 - A table migration or backfill. The keys match by construction.
-- A forced client update. Aliases and the flattened envelope keep every shipped build
-  working; the version gate exists for the day that stops being true.
-- Coordinated deploys. The backend can move to Keel while clients are still old, because
-  the wire shapes are compatible where clients already exist and additive where not.
+- Coordinated deploys for Maxi80, which has shipped clients in the wild. The backend
+  can move to Keel while old clients still call the legacy path, because aliases remap
+  to the right route and the flattened envelope reproduces the old response shape.
+
+**However, Orthanc and odvpn are both pre-release: neither has shipped a client, neither
+has users.** Their retrofits are the clean case — the client and backend can ship
+together in a single coordinated update, with no aliases needed. The ping body is not
+backward-compatible across the Keel boundary (Keel requires closed enum values for
+`platform` and `licenseState`, and sends a single `profileBucket` dimension rather than
+the old `dimensions` map), so a mixed deploy — new backend, old client, or vice versa —
+would break. The solution is simple: don't do a mixed deploy.
+
+A per-deployment opt-in compatibility shim is possible in principle (translate old enum
+values server-side, accept both body shapes), but there is no reason to build one for
+these two apps. If Maxi80 ever needs it, that decision belongs to its retrofit PR.
