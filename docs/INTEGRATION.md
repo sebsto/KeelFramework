@@ -1529,29 +1529,51 @@ Live within 60 seconds, no Lambda restart.
 
 # App-owned routes
 
-Some apps need routes alongside Keel's — a payment webhook, a license check, a
-download redirect — without giving up the counters and config Keel provides. You do
-not fork `KeelLambda` for this. Instead you write your own executable that depends on
-`KeelServer` + `KeelRouter`, mounts Keel's routes on a shared builder, and then
-registers its own routes before calling `.build()`.
+Some apps need their own routes next to Keel's — a payment webhook, a license
+check, a download redirect — while still using Keel's counters and config. You
+don't fork `KeelLambda` to do this. You write your own Lambda executable that
+depends on the `KeelServer` and `KeelRouter` libraries, mounts Keel's routes on
+a shared router builder, adds your own routes, then builds the router.
 
-`server/Sources/KeelLambda/Lambda.swift` is the reference. Its `makeRouterBuilder`
-method shows the wiring (stores, ConfigCache, `KeelRouter`, IAP) end to end — but it
-lives in the `KeelLambda` **executable** target and is `internal`, so you cannot import
-it. Reproduce the same steps in your own executable against the framework's **library**
-targets, whose types are all `public`:
+The whole pattern is three steps:
+
+```swift
+import KeelRouter   // KeelRouter, and builder.mount(keel:)
+import KeelServer   // handlers, ConfigCache, the store protocols
+import Routing      // HTTPRouterBuilder
+
+let builder = HTTPRouterBuilder()
+
+// 1. Mount Keel's routes: /v1/bootstrap, /v1/ping, /v1/stats
+builder.mount(keel: keel)
+
+// 2. Add your own routes on the same builder
+builder.post("/v1/my-webhook") { request, _ in
+    try await MyWebhookHandler().handle(request)
+}
+builder.get("/v1/my-thing") { request, _ in
+    try await MyThingHandler().handle(request)
+}
+
+// 3. Build once; the router serves both Keel's routes and yours
+let router = builder.build()
+```
+
+You construct the `KeelRouter` yourself from its public initializer, so you own
+every dependency it takes. The types you need are all public library API:
 
 - `KeelServer` — the handlers (`BootstrapHandler`, `PingHandler`, `StatsHandler`),
   `ConfigCache`, and the `CounterStore` / `ConfigStore` protocols.
 - `KeelServerDynamoDB` — `DynamoDBCounterStore` / `DynamoDBConfigStore`.
-- `KeelRouter` — the `KeelRouter` type (public init) and the `builder.mount(keel:)`
-  seam that registers Keel's routes on a shared `HTTPRouterBuilder`.
+- `KeelRouter` — the `KeelRouter` type and `builder.mount(keel:)`.
 
-The importable seam is therefore: build a `KeelRouter` from the public init, call
-`builder.mount(keel:)`, then register your own routes before `.build()`. That path is
-guarded by a compile-time test (`AdopterSeamTests`) that imports only these library
-targets — if a future change stranded the seam back in the executable, that test would
-fail to compile.
+`KeelLambda`'s own `makeRouterBuilder` in `server/Sources/KeelLambda/Lambda.swift`
+does exactly this wiring, but it's `internal` to that executable target, so you
+can't import it — copy the steps into your own executable. `AdopterSeamTests`
+builds a router through this same public path, so if the seam ever became
+import-only again the build would fail.
+
+The full example below wires it all up with real DynamoDB stores.
 
 ## Pointing the CDK construct at your executable
 
@@ -1641,10 +1663,9 @@ struct OrthancLambda: LambdaHandler {
             logger: logger)
 
         let builder = HTTPRouterBuilder()
-        builder.mount(keel: keel)   // the importable seam — Keel's routes on a shared builder
+        builder.mount(keel: keel)   // Keel's routes on the shared builder
 
-        // 2. Orthanc-specific dependencies
-        let dynamoDB = DynamoDB(client: AWSClient())
+        // 2. Orthanc-specific dependencies (reuse the dynamoDB client from step 1)
         let licenseStore = DynamoDBLicenseStore(dynamoDB: dynamoDB, tableName: settings.tableName)
 
         // 3. SSM secret for Stripe webhook signature verification
