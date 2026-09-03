@@ -127,6 +127,16 @@ export interface KeelBackendProps {
   /** `FEATURE_FLAGS` emergency override, e.g. `"sleep_timer=false"`. Normally unset. */
   readonly featureFlags?: string;
 
+  /**
+   * Origins allowed in cross-origin responses. When set, the server echoes the request's
+   * `Origin` header back in `Access-Control-Allow-Origin` if it appears in this list, and
+   * never emits `*`. Apex and www are distinct entries — list both if the app is reachable
+   * under both names. When unset (or empty), no CORS headers are emitted.
+   *
+   * @example ['https://stormacq.net', 'https://www.stormacq.net']
+   */
+  readonly allowedOrigins?: string[];
+
   /** Function log level: trace|debug|info|notice|warning|error|critical. Default info. */
   readonly logLevel?: string;
 
@@ -229,6 +239,9 @@ export class KeelBackend extends Construct {
         LOG_LEVEL: props.logLevel ?? "info",
         ...(props.featureFlags ? { FEATURE_FLAGS: props.featureFlags } : {}),
         ...aliasRoutesVariable(props.aliasRoutes),
+        ...(props.allowedOrigins?.length
+          ? { ALLOWED_ORIGINS: props.allowedOrigins.join(",") }
+          : {}),
         ...(props.iap
           ? {
               IAP_BUNDLE_ID: props.iap.bundleId,
@@ -289,6 +302,26 @@ export class KeelBackend extends Construct {
         integration,
         authorizer: isPublic ? undefined : authorizer,
       });
+    }
+
+    // OPTIONS preflight routes are registered only when allowedOrigins is set. The Lambda
+    // handles the actual CORS check — it echoes the origin only if it is in the allowlist.
+    // Preflight routes are always public: the browser sends them without credentials and
+    // a 401/403 from the authorizer would block the real request before it starts.
+    if (props.allowedOrigins && props.allowedOrigins.length > 0) {
+      const corsPaths = new Set([
+        ...KEEL_CORE_ROUTES.map((r: KeelRoute) => r.path),
+        ...(props.iap ? KEEL_IAP_ROUTES.map((r: KeelRoute) => r.path) : []),
+        ...Object.keys(props.aliasRoutes ?? {}),
+      ]);
+      for (const p of corsPaths) {
+        this.httpApi.addRoutes({
+          path: p,
+          methods: [apigwv2.HttpMethod.OPTIONS],
+          integration,
+          authorizer: undefined,
+        });
+      }
     }
 
     // --- Custom domain ---

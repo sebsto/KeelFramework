@@ -71,6 +71,7 @@ struct KeelLambda: LambdaHandler {
                 mauWindowMonths: settings.mauWindowMonths,
                 logger: logger),
             aliases: settings.aliases,
+            corsConfig: CORSConfig(allowedOrigins: settings.allowedOrigins),
             bootstrapCacheSeconds: settings.configTTLSeconds,
             logger: logger)
 
@@ -164,6 +165,11 @@ struct Settings {
 
     let iap: IAP?
 
+    /// Origins the function will echo in `Access-Control-Allow-Origin`. Empty when the
+    /// `ALLOWED_ORIGINS` environment variable is absent or blank — CORS is disabled by
+    /// default and opt-in by setting the variable.
+    let allowedOrigins: [String]
+
     #if DEBUG
     /// `KEEL_MEMORY_STORE=1` — serve from an in-process store, for local development against
     /// `APIGatewayV2Server`. Compiled out of release builds entirely.
@@ -211,6 +217,18 @@ struct Settings {
             // nothing. Half a configuration is a deploy mistake, not a mode.
             throw SettingsError.incompleteIAPConfiguration
         }
+        // Trim each entry the same way as iapProductIds: FoundationEssentials-safe,
+        // no CharacterSet, no replacingOccurrences. An absent or blank variable leaves
+        // CORS disabled (the default and the safe choice).
+        self.allowedOrigins =
+            config.string(forKey: "allowedOrigins").map { value in
+                value.split(separator: ",").compactMap { entry in
+                    let trimmed = String(
+                        entry.drop(while: \.isWhitespace).reversed()
+                            .drop(while: \.isWhitespace).reversed())
+                    return trimmed.isEmpty ? nil : trimmed
+                }
+            } ?? []
         #if DEBUG
         self.usesMemoryStore = config.bool(forKey: "keelMemoryStore", default: false)
         #endif

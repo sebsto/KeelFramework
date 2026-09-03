@@ -493,3 +493,72 @@ describe("KeelBackend IAP", () => {
     expect(byKey["GET /v1/entitlement"].AuthorizationType).toBe("AWS_IAM");
   });
 });
+
+describe("KeelBackend CORS", () => {
+  test("no ALLOWED_ORIGINS env var when allowedOrigins is unset", () => {
+    const { template } = synth();
+    const fns = template.findResources("AWS::Lambda::Function");
+    const keelFn = Object.values(fns).find(
+      (f) => !f.Properties.Environment?.Variables?.SECRET_PARAMETER,
+    );
+    const vars = keelFn?.Properties?.Environment?.Variables ?? {};
+    expect(vars.ALLOWED_ORIGINS).toBeUndefined();
+  });
+
+  test("ALLOWED_ORIGINS is set to a comma-separated list when the prop is provided", () => {
+    const { template } = synth({
+      allowedOrigins: ["https://example.com", "https://www.example.com"],
+    });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          ALLOWED_ORIGINS: "https://example.com,https://www.example.com",
+        }),
+      },
+    });
+  });
+
+  test("OPTIONS routes are registered for each Keel path when allowedOrigins is set", () => {
+    const { template } = synth({
+      allowedOrigins: ["https://example.com"],
+    });
+    for (const path of ["/v1/bootstrap", "/v1/ping", "/v1/stats"]) {
+      template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+        RouteKey: `OPTIONS ${path}`,
+      });
+    }
+  });
+
+  test("no OPTIONS routes when allowedOrigins is unset", () => {
+    const { template } = synth();
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    expect(routes.some((r) => String(r.Properties.RouteKey).startsWith("OPTIONS"))).toBe(false);
+  });
+
+  test("OPTIONS routes are always public — browsers send preflights without credentials", () => {
+    const { template } = synth({
+      allowedOrigins: ["https://example.com"],
+      auth: KeelAuth.iam(),
+    });
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    const optionsRoutes = routes.filter((r) =>
+      String(r.Properties.RouteKey).startsWith("OPTIONS"),
+    );
+    expect(optionsRoutes.length).toBeGreaterThan(0);
+    for (const r of optionsRoutes) {
+      expect(r.Properties.AuthorizationType ?? "NONE").toBe("NONE");
+    }
+  });
+
+  test("OPTIONS routes also cover IAP paths when iap is configured", () => {
+    const { template } = synth({
+      allowedOrigins: ["https://example.com"],
+      iap: { bundleId: "com.example.app", productIds: ["unlock_pro"] },
+    });
+    for (const path of ["/v1/purchase", "/v1/entitlement", "/v1/appstore-notification"]) {
+      template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+        RouteKey: `OPTIONS ${path}`,
+      });
+    }
+  });
+});
