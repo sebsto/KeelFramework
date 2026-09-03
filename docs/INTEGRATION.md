@@ -40,6 +40,7 @@ For background on *why* things are shaped the way they are, see
 19. [Prerequisites](#19-prerequisites)
 20. [Scaffolding a new app](#20-scaffolding-a-new-app)
 21. [Compiling the Lambda](#21-compiling-the-lambda-one-time-then-on-each-code-change)
+    - [Adding your own routes: the lambda-kit fork and runtime pin](#adding-your-own-routes-the-lambda-kit-fork-and-runtime-pin)
 22. [Creating the SSM parameter](#22-creating-the-ssm-parameter-one-time-sharedsecret-only)
 23. [Deploying the stack](#23-deploying-the-stack)
 24. [Custom domain, certificate, and DNS](#24-custom-domain-certificate-and-dns-production-one-time)
@@ -1055,6 +1056,37 @@ minutes. Subsequent builds are incremental.
 a placeholder script that prints an error on invocation. This keeps synth and template
 tests working without a Swift toolchain, but the deployed function won't serve requests.
 Build the real zip before the first `cdk deploy`.
+
+### Adding your own routes: the lambda-kit fork and runtime pin
+
+Most apps deploy `KeelLambda` as-is. An app that has server routes of its own does **not**
+fork it — it ships its own executable that depends on `KeelServer` + `KeelRouter` (plus
+`KeelIAPRouter` if it sells things), calls `builder.mount(keel:)` to add the framework
+routes, and registers its own routes on the same builder.
+`server/Sources/KeelLambda/Lambda.swift` is the reference for that wiring.
+
+Because your executable links Keel's server packages, it inherits two dependency pins Keel
+carries, and it has to resolve the **same** ones or SPM won't produce a single coherent
+build:
+
+- **`swift-aws-lambda-runtime` on the 3.x line** (`3.0.0-rc1` today). Keel is on 3.x for the
+  `LambdaRuntime` API, response streaming, and the `AWSLambdaBuilder` plugin CDK reads the
+  zip from. Resolve the same 3.x major in your own package.
+- **The `lambda-kit` fork, pinned by exact revision.** Keel's router uses the `Routing`
+  library from `github.com/sebsto/lambda-kit` — a fork whose *only* change is widening the
+  runtime pin to 3.x (upstream `SongShift/lambda-kit` still pins 2.6.x). `server/Package.swift`
+  pins it to the exact revision `5b2b025635a872345e7711177fe5b56a5ce81fad` (the current HEAD
+  of the fork's `support-runtime-3` branch) rather than tracking the branch, so a force-push
+  can't quietly change what builds. An app mounting Keel beside its own Lambdas must resolve
+  that same pin: depend on the same fork revision, or let SPM share Keel's resolution by not
+  declaring a competing `lambda-kit` requirement.
+
+**The fork is temporary.** It carries no behaviour of its own to preserve — it only widens a
+version range. It goes away the moment upstream `lambda-kit` depends on
+`swift-aws-lambda-runtime` v3, at which point Keel repoints the dependency at a tagged
+upstream `lambda-kit` release. That is a `Package.swift`-only change with **no code** —
+nothing imports anything the fork added, so a consuming app just re-resolves. See
+[ADR 0002](adr/0002-lambda-kit-fork.md) for the decision and its full exit criteria.
 
 ## 22. Creating the SSM parameter (one-time, sharedSecret only)
 

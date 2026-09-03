@@ -53,9 +53,11 @@ let package = Package(
         .package(url: "https://github.com/awslabs/swift-aws-lambda-events.git", from: "1.5.0"),
         // Fork of SongShift/lambda-kit widening the swift-aws-lambda-runtime pin to
         // 3.x (upstream pins 2.6.x). Only the `Routing` library is used, and it does
-        // not itself depend on the runtime. Package.resolved pins the commit; see
-        // docs/adr/0002-lambda-kit-fork.md for the exit criteria.
-        .package(url: "https://github.com/sebsto/lambda-kit.git", branch: "support-runtime-3"),
+        // not itself depend on the runtime. Pinned by exact revision (the current HEAD
+        // of the fork's support-runtime-3 branch) so a force-push cannot change what we
+        // build; the pin is temporary — see docs/adr/0002-lambda-kit-fork.md for the
+        // exit criteria and docs/INTEGRATION.md for the app-side compatibility note.
+        .package(url: "https://github.com/sebsto/lambda-kit.git", revision: "5b2b025635a872345e7711177fe5b56a5ce81fad"),
         // Soto core only: the DynamoDB client is code-generated into
         // Sources/Soto/DynamoDB by scripts/generate-soto.sh. aws-sdk-swift is
         // deliberately not used — its aws-crt TLS layer crashes at Lambda cold start
