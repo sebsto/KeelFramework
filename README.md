@@ -57,7 +57,7 @@ model, request flows, privacy model, infrastructure, cost model.
 
 | Artifact | Path | Consume as |
 |---|---|---|
-| Client library | `Package.swift` | SPM: `KeelCore`, `KeelClient`, `KeelClientTesting` |
+| Client library | `Package.swift` | SPM: `KeelCore`, `KeelClient`, `KeelClientSigning`, `KeelClientTesting` |
 | Server library + Lambdas | `server/Package.swift` | SPM: `KeelServer`, `KeelServerDynamoDB`, `KeelServerTesting`; executables `KeelLambda`, `KeelAuthorizerLambda`, `keel` |
 | Infrastructure | `cdk/` | npm: `@keel/cdk` → `KeelBackend`, `KeelAuth`, `KeelStatsSite` |
 | Stats dashboard | `dashboard/` | static files, deployed by `KeelStatsSite` |
@@ -147,6 +147,7 @@ plans sketched in `docs/RETROFIT.md`.
 Package.swift              client package (Apple + Skip-safe core)
   Sources/KeelCore/        portable: wire types, transport, pure decisions — read its README
   Sources/KeelClient/      Apple: @Observable stores, SwiftUI, StoreKit
+  Sources/KeelClientSigning/ Apple: reference KeelSigV4Transport for KeelAuth.iam()
   Sources/KeelClientTesting/
 server/Package.swift       server package (Linux + macOS)
   Sources/KeelServer/      wire types, CounterSchema, handlers, store protocols
