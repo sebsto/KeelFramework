@@ -83,7 +83,7 @@ Keel is a Swift package with zero third-party dependencies. Add it in Xcode or i
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/your-org/KeelFramework.git", from: "1.0.0"),
+    .package(url: "https://github.com/your-org/KeelFramework.git", from: "0.1.0"),
 ]
 ```
 
@@ -1543,7 +1543,7 @@ let package = Package(
     name: "MyAppBackend",
     platforms: [.macOS(.v15)],
     dependencies: [
-        .package(url: "https://github.com/sebsto/KeelFramework.git", from: "1.0.0"),
+        .package(url: "https://github.com/sebsto/KeelFramework.git", from: "0.1.0"),
         // …only what your OWN routes need on top.
     ],
     targets: [
@@ -1564,19 +1564,23 @@ That is the same package URL the app target uses; the products differ. You do no
 with the server products at versions Keel has verified together, so your function cannot
 drift onto a runtime the framework has not been built against.
 
-**If your routes talk to DynamoDB or SSM themselves**, add `KeelSotoDynamoDB` /
-`KeelSotoSSM` rather than the upstream `soto` package:
+**If your routes talk to DynamoDB or SSM themselves**, add the upstream `soto` package to
+your own manifest and use it directly:
 
 ```swift
-.product(name: "KeelSotoDynamoDB", package: "KeelFramework"),   // getItem, putItem, query, updateItem
-.product(name: "KeelSotoSSM", package: "KeelFramework"),        // getParameter
+.package(url: "https://github.com/soto-project/soto.git", from: "7.0.0"),
 ```
 
-These are Keel's own code-generated clients, carrying only the operations the framework and
-its adopters need. Using them keeps one AWS client in the function instead of two, which is
-the cold-start cost the code generation exists to avoid
-([adr/0006](adr/0006-codegen-soto.md)). If you need an operation they do not cover,
-regenerate them (`make soto`) rather than adding the full SDK alongside.
+Keel's own AWS clients (`KeelSotoDynamoDB`, `KeelSotoSSM`) are **internal**: they are
+code-generated, carry only the handful of operations the framework itself calls, and are
+built with relaxed compiler settings because they are not hand-maintained. Exporting them
+would turn generated code into public API and make regenerating them a breaking change, so
+they are not products you can import. The `Keel` prefix on their module names exists so that
+your `soto` and Keel's copy can coexist in one package graph — an earlier version named them
+`SotoDynamoDB` / `SotoSSM` and any app bringing `soto` failed to build.
+
+`soto-core` is resolved once for the whole graph, so bringing `soto` adds its generated
+service shapes, not a second signing/HTTP stack.
 
 Then the three steps:
 

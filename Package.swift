@@ -128,13 +128,6 @@ let package = Package(
         // Fixture factory for building verified-payload values in tests.
         .library(name: "KeelAppStoreTesting", targets: ["KeelAppStoreTesting"]),
         .library(name: "KeelAppStoreRouter", targets: ["KeelAppStoreRouter"]),
-        // Keel's own minimal, code-generated AWS clients (DynamoDB: getItem, putItem,
-        // query, updateItem; SSM: getParameter). Exported so an app writing its own store
-        // or reading its own SSM parameters reuses this one small client instead of adding
-        // a second AWS SDK to the function — which is the cold-start cost the code
-        // generation exists to avoid (docs/adr/0006-codegen-soto.md).
-        .library(name: "KeelSotoDynamoDB", targets: ["KeelSotoDynamoDB"]),
-        .library(name: "KeelSotoSSM", targets: ["KeelSotoSSM"]),
 
         // MARK: Executables
 

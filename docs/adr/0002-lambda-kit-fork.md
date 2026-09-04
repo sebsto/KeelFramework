@@ -24,7 +24,7 @@ dependency to the **exact version `0.1.0`**, which tags the Routing-only commit 
 
 The pin has to be a *version* rather than a revision, because SwiftPM refuses to resolve a
 package requested by version whose own dependencies are requested by revision or branch. Keel
-is consumed by tag (`from: "1.1.0"`), so every dependency it declares must be
+is consumed by tag (`from: "0.1.0"`), so every dependency it declares must be
 version-pinned too, or no app could depend on Keel at all.
 
 Two facts make the fork cheap rather than alarming: `Routing` does not itself depend on the
