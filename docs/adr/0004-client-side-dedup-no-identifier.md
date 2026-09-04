@@ -8,10 +8,10 @@ Daily and monthly active counts require knowing whether a launch is the first on
 *this* device. The conventional answer is to send an identifier and let the server
 deduplicate — an install id, an IDFV, a hashed machine id, even a salted one.
 
-Orthanc started there. It had a hashed machine identifier and a salt, to make a 30-day
-trial unresettable. When the trial was dropped, both were **deleted rather than left
-dormant**, and its published policy now states flatly that no identifier and no salt exist
-in the binary. That turned out to be the most valuable property of the whole design, and it
+One of the apps this schema came from started there: a hashed machine identifier and a salt,
+to make a time-limited trial unresettable. When the trial was dropped, both were **deleted
+rather than left dormant**, so its published policy could state flatly that no identifier and
+no salt exist in the binary. That turned out to be the most valuable property of the design, and it
 is the one this framework is built to preserve.
 
 ## Decision
@@ -35,8 +35,9 @@ The invariant, stated so it can be checked:
 Deduplication state is persisted **after** the send returns, and the `firstPaidLaunch`
 ratchet latches only on a ping the server *accepted* — a conversion is once per install, so
 a dropped one is lost forever, unlike a daily boolean that simply re-fires tomorrow.
-(odvpn's implementation latches unconditionally; that is a bug this framework fixes, and it
-is the reason `PingFlags` is one pure function instead of two hand-written copies.)
+(Latching unconditionally, before the server has accepted the ping, silently loses
+conversions — the kind of divergence that appears when each app hand-writes this, and the
+reason `PingFlags` is one pure function rather than a copy per app.)
 
 Per-app distributions are bucketed on the device (`3-5`, not `4`) and validated against a
 server-side allowlist, so neither a single request nor a client typo can leak a raw value or

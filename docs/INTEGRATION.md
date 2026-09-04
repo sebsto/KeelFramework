@@ -52,7 +52,7 @@ For background on *why* things are shaped the way they are, see
 - [App-owned routes](#app-owned-routes)
   - [Pointing the CDK construct at your executable](#pointing-the-cdk-construct-at-your-executable)
   - [DynamoDB grant for app-owned item kinds](#dynamodb-grant-for-app-owned-item-kinds)
-  - [Worked example: Orthanc's Stripe routes](#worked-example-orthancs-stripe-routes)
+  - [Worked example: a payment webhook and a license lookup](#worked-example-a-payment-webhook-and-a-license-lookup)
 
 **Part 4 — Dashboard**
 
@@ -1659,11 +1659,12 @@ framework verifies Apple's paperwork and stores nothing per user. So if your own
 their own DynamoDB item kinds, grant `PutItem` directly on the table as shown above; there is no
 framework prop that will hand it to you as a side effect.
 
-## Worked example: Orthanc's Stripe routes
+## Worked example: a payment webhook and a license lookup
 
-The following example shows how Orthanc would register its three Stripe-facing routes
-(`POST /v1/checkout`, `POST /v1/stripe-webhook`, `GET /v1/license`) on the same Lambda
-as Keel. This is documentation — the code lives in the Orthanc repo, not in Keel.
+A paid app typically needs three routes of its own — start a checkout, receive the payment
+provider's webhook, and let the buyer fetch their license — on the same Lambda as Keel's
+counters and config. The example below uses Stripe, but the shape is the same for any
+provider. None of this code is part of Keel; it lives in the app's own repository.
 
 ### main.swift
 
@@ -1677,16 +1678,16 @@ import KeelServerDynamoDB
 import Logging
 import Routing
 import SotoDynamoDB
-// Orthanc's own handlers — NOT part of KeelFramework
-import OrthancBackendCore
+// The app's own handlers — NOT part of KeelFramework
+import MyAppBackendCore
 
 @main
-struct OrthancLambda: LambdaHandler {
+struct MyAppLambda: LambdaHandler {
     private let router: HTTPRouter
 
     init() throws {
         let settings = try Settings()
-        var logger = Logger(label: "orthanc")
+        var logger = Logger(label: "myapp")
         logger.logLevel = settings.logLevel
 
         // 1. Build the Keel router from public library API and mount it on a shared builder.
@@ -1714,7 +1715,7 @@ struct OrthancLambda: LambdaHandler {
         let builder = HTTPRouterBuilder()
         builder.mount(keel: keel)   // Keel's routes on the shared builder
 
-        // 2. Orthanc-specific dependencies. The app's own store uses the upstream soto
+        // 2. The app's own dependencies. Its store uses the upstream soto
         //    client it already depends on, sharing the one AWSClient from step 1.
         let licenseStore = DynamoDBLicenseStore(
             dynamoDB: SotoDynamoDB.DynamoDB(client: awsClient), tableName: settings.tableName)
@@ -1752,7 +1753,7 @@ struct OrthancLambda: LambdaHandler {
     }
 
     static func main() async throws {
-        let handler = try await OrthancLambda()
+        let handler = try await MyAppLambda()
         let runtime = LambdaRuntime(
             encoder: LambdaJSONOutputEncoder<APIGatewayV2Response>(JSONEncoder()),
             decoder: ProxySynthesizingDecoder(),
@@ -1787,10 +1788,10 @@ is set, its `OPTIONS` preflight, so a browser making a non-simple cross-origin r
 
 ```ts
 const backend = new KeelBackend(this, "Backend", {
-    appName: "orthanc",
+    appName: "myapp",
     envName: props.envName,
-    auth: KeelAuth.sharedSecret({ parameterName: "/keel/orthanc/prod/api-secret" }),
-    lambdaAssetPath: "path/to/OrthancLambda.zip",
+    auth: KeelAuth.sharedSecret({ parameterName: "/keel/myapp/prod/api-secret" }),
+    lambdaAssetPath: "path/to/MyAppLambda.zip",
     allowedOrigins: ["https://stormacq.net", "https://www.stormacq.net"],
     appRoutes: [
         { path: "/v1/checkout", method: "POST" },                 // configured authorizer

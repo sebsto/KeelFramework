@@ -1,8 +1,8 @@
 # KeelCore — rules for this target
 
 `KeelCore` is the portable half of the client. It has to compile through
-[Skip](https://skip.tools)'s Swift→Kotlin transpiler, because Maxi80 ships this source to
-Android. See `docs/adr/0005-two-client-modules.md`.
+[Skip](https://skip.tools)'s Swift→Kotlin transpiler, so an app can ship this source to
+Android as well as Apple platforms. See `docs/adr/0005-two-client-modules.md`.
 
 Nothing in `Package.swift` enforces the rules below — the compiler will happily accept a
 violation on Apple platforms and someone's Android build will break instead. Hence this
@@ -45,5 +45,5 @@ here so there is one copy to get right.
 ## Verifying
 
 There is no Skip build in this repo's CI (one package, no Android target). The real check is
-Maxi80's Android build after a version bump. If Skip adoption spreads past one app, add the
-CI job and delete this paragraph.
+the Android build of a consuming app after a version bump. Add a CI job here — and delete
+this paragraph — once an Android target exists in this repo to build against.

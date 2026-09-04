@@ -10,7 +10,7 @@ The server needs an HTTP router over API Gateway events. The candidates:
    a 128 MB function and lengthens cold start for a router we use three times.
 2. **`SongShift/lambda-kit`'s `Routing` library** — a small, typed router built exactly for
    this shape (`HTTPRouterBuilder`, typed path parameters, `APIGatewayV2Server` for local
-   development). Maxi80 already uses it in production. But upstream pins
+   development), and it is already used in production elsewhere. But upstream pins
    `swift-aws-lambda-runtime` at 2.6.x, and we want 3.x for its `LambdaRuntime` API,
    response streaming, and the `AWSLambdaBuilder` plugin that CDK reads its zip from.
 3. **Write our own** — roughly 150 lines for method + path matching with parameters.

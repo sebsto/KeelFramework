@@ -123,7 +123,8 @@ struct TelemetryServiceTests {
         await harness.service.run(licenseState: .free)
 
         #expect(await harness.transport.requests.count == 1)
-        // odvpn persists first and silently drops a day on failure; this is the fix.
+        // Dedup state is written only after the send is accepted, so a rejected ping leaves
+        // the day unconsumed and tomorrow re-offers the same counts.
         #expect(harness.defaults.keys.isEmpty)
     }
 

@@ -1,32 +1,33 @@
-# Retrofitting the three existing apps onto Keel
+# Retrofitting an existing app onto Keel
 
-Keel's table schema is byte-compatible with what Orthanc and odvpn already write — that
-was a design constraint, not luck (`CounterSchema`'s doc comment) — so **no retrofit
-involves a data migration**. Point the Keel handlers at the existing table and the
-history is intact. Each app gets its own plan when its retrofit actually happens; this
-document records what those plans will have to deal with, while the details are fresh.
+Keel's table schema is byte-compatible with the aggregate-counter shape a hand-written
+telemetry backend typically arrives at — that was a design constraint, not luck
+(`CounterSchema`'s doc comment) — so **a retrofit needs no data migration**. Point the Keel
+handlers at the existing table and the history is intact.
+
+This is the generic guide. An individual app's retrofit plan, with its own decisions and
+sequencing, belongs in that app's repository, not here.
 
 ## The common shape
 
 Every retrofit is the same four moves:
 
-1. **Backend**: replace the bespoke Lambda with `KeelLambda` (or a thin executable
-   around `builder.mount(keel:)` if the app has routes of its own), deployed by
-   `KeelBackend` pointed at the *existing* table via imports — or a new table if the
-   history is dispensable.
-2. **Config**: run `keel config replace --file config.json` to move the app's flags,
-   gate, and URLs into the `CONFIG#current` item.
+1. **Backend**: replace the bespoke Lambda with `KeelLambda` — or a thin executable around
+   `builder.mount(keel:)` if the app has routes of its own — deployed by `KeelBackend`
+   pointed at the *existing* table via `existingTable`, or at a new table if the history is
+   dispensable.
+2. **Config**: run `keel config replace --file config.json` to move the app's flags, gate,
+   and URLs into the `CONFIG#current` item.
 3. **Client**: swap the bespoke bootstrap/telemetry code for `RemoteConfigStore`,
    `FeatureFlags`, and `TelemetryService`; migrate the `UserDefaults` dedup keys (below).
-4. **Aliases**: declare the old paths in `aliasRoutes` so shipped clients keep working
-   for as long as they exist in the wild.
+4. **Aliases**: declare the old paths in `aliasRoutes` so shipped clients keep working for
+   as long as they exist in the wild.
 
 ### Migrating the telemetry dedup keys
 
 Keel reads its own key names (`keel.telemetry.*`). A shipped install has state under the
-app's old names, and losing it re-fires `firstPingEver` — every migrated install counts
-as a new install. Each app's retrofit must copy the old values once, before the first
-`TelemetryService.run`:
+app's old names, and losing it re-fires `firstPingEver` — every migrated install counts as a
+new install. Copy the old values once, before the first `TelemetryService.run`:
 
 ```swift
 let defaults = UserDefaults.standard
@@ -40,96 +41,73 @@ if defaults.object(forKey: TelemetryService.Key.lastPingDate) == nil,
 The opt-out key matters most: failing to migrate it re-enables telemetry for users who
 turned it off, which is the one migration bug that breaks a published promise.
 
-## Maxi80
+**An app with no shipped clients should skip this entirely** and adopt Keel's key names
+directly. The migration is the riskiest ten lines in a retrofit, and a pre-release app does
+not need to write them.
 
-| Existing | Keel |
-|---|---|
-| `GET /station` → `Station` fields + `features` at the top level | `aliasRoutes: { "/station": { route: "/v1/bootstrap", envelope: "flattened" } }` |
-| `FEATURE_FLAGS` env override | identical — `FeatureFlagsOverride` is Maxi80's parser, kept |
-| SAM `template.yaml` | `KeelBackend` (the artwork/history routes stay in Maxi80's own executable via `mount(keel:)`) |
-| no telemetry | free: adopt `TelemetryService`, get the dashboard |
+## Cases you are likely to hit
 
-The flattened alias is the whole trick: shipped players keep decoding `/station` while
-new builds move to `/v1/bootstrap` with the station payload under `app`. The `Station`
-struct becomes the `App` type parameter of `RemoteConfigStore<Station>` — field-for-field
-unchanged. Maxi80's Android build (Skip) uses `KeelCore` only: wire types, transport,
-`PingFlags`; the Observation layer stays Apple-side.
+**The app has routes of its own.** Keep them: write your own Lambda executable that calls
+`builder.mount(keel:)` and registers your routes on the same builder, point `KeelBackend` at
+it with `lambdaAssetPath`, and declare your paths in `appRoutes` so the gateway routes them
+(with their CORS preflight). See Part 3 of [INTEGRATION.md](INTEGRATION.md).
 
-Watch for: the `/artwork` and `/history` routes need Maxi80's S3 code, so Maxi80 keeps
-its own Lambda executable mounting Keel's router beside its own — the reference for
-"an app with routes of its own".
+**The app already serves a bootstrap-shaped endpoint.** Declare it in `aliasRoutes`. With
+`envelope: "flattened"` the `app` payload's keys are emitted at the top level beside
+`features`, which reproduces the common "config fields inline" response shape, so shipped
+clients keep decoding the old path while new builds move to `/v1/bootstrap`. Your existing
+config struct becomes the `App` type parameter of `RemoteConfigStore<App>`, usually
+field-for-field unchanged.
 
-## Orthanc
-
-| Existing | Keel |
-|---|---|
-| `AGG#` counter table | **identical keys** — point Keel at it, zero migration |
-| `licenseState: "full"` | Keel says `paid`; the old `AGG#DAU#full` partitions keep their name |
-| `profileBuckets` in `/v1/stats` | `dimensions: { "profiles": [...] }` |
-| `ProfileBucket` client enum | a `dimensions: ["profiles": bucket.rawValue]` entry + config allowlist `["1-2","3-5","6-10","11+"]` |
-
-The `full` → `paid` rename is the one real decision. The old partitions
-(`AGG#DAU#full/…`) stay readable but Keel writes `AGG#DAU#paid/…` from the cutover day,
-so the paid cohort chart has a seam at the migration date. The retrofit plan chooses:
-accept the seam (recommended — it is one visible day), or have the dashboard's fetch
-merge `full` into `paid` client-side for the overlap window. Keel's server will not
+**The app renames a cohort value.** If the app's wire vocabulary differs from Keel's — say
+`licenseState: "full"` where Keel says `paid` — the old partitions stay readable under their
+old names, but Keel writes the new name from the cutover day, so that cohort's chart has a
+seam at the migration date. Two options: accept the seam, which is one visible day, or have
+the dashboard merge the two client-side for the overlap window. The server will not
 special-case it.
 
-Orthanc's stats page is replaced by `dashboard/` with its `tokens.css` set to Orthanc's
-brand tokens — the renderer *is* Orthanc's, merged with odvpn's.
+**The app has a per-dimension counter key.** Keel stores dimension spreads under
+`AGG#DIM#<name>#<month>`. An app that used a bespoke prefix such as `AGG#PROFILES#<month>`
+will not see its historical series until it either copies those items once — a handful per
+month — or configures the legacy dimension name verbatim so Keel keeps writing it.
 
-**Profile-spread partition rename:** Keel changed the storage key for profile spreads
-from `AGG#PROFILES#2026-08` to `AGG#DIM#profiles#2026-08`. This means `StatsHandler`
-will not see historical profile data even though the headline says "history survives"
-(the counter keys themselves are untouched, but the profile-spread series sits under a
-different prefix). The fix is a one-time copy — roughly four items per month — or adding
-a name alias in `StatsHandler` that reads both keys and merges results. The copy is
-simpler; the alias survives future key renames more gracefully.
+**The app's purchase flow runs on-device.** Mount nothing from `KeelAppStore`. It verifies
+Apple's paperwork and stores nothing, so it cannot falsify a "no per-device row" privacy
+claim — but an app that unlocks local UI gains nothing from a server check either, since no
+server check helps against a patched client. Keep your own licensing code.
 
-**Orthanc does not need `KeelAppStore`.** Orthanc's purchase flow runs entirely on-device
-(StoreKit receipt validation + Ed25519 server signature), and the published privacy
-statement says the table holds no per-device row. Since the framework's `KeelAppStore` module
-verifies Apple's paperwork and stores nothing (the entitlement model was removed — issue #12),
-there is no framework row to falsify the privacy claim with; but Orthanc has no server-side
-verification need at all — it unlocks local UI, and no server check helps against a patched
-client — so it mounts nothing here and keeps its own `LicenseHandlers`.
+**The app's purchase model is not an entitlement.** Credit balances, ledgers, consumption
+reporting and refund reversal are not modelled by the framework, and `KeelAppStore` is
+verification-only, so there is nothing to map onto or reject. Keep your billing stack and
+reuse the verifier beside it if it helps: that is code reuse, not a data model you have to
+adopt.
 
-## odvpn
+## Behaviour changes to expect
 
-| Existing | Keel |
-|---|---|
-| `AGG#` schema in `StatsStore.swift` | identical — same zero-migration story |
-| OS spread incremented on `firstToday` | Keel dedups it monthly; `sum(osVersions)` becomes ≈ MAU from cutover (documented behavior change, deliberate) |
-| `StatsClient` persisting dedup before send | Keel persists only after an accepted send — silently fixes the dropped-day bug |
-| IAM auth via Cognito | `KeelAuth.iam()`; the SigV4-signing transport stays odvpn's own `HTTPTransport` conformance |
-| purchase/credits/billing stack | **not** Keel's — `KeelAppStore` verifies App Store paperwork but stores nothing; odvpn keeps `VPNBilling` (credit metering, ledger, consumption reporting) and can reuse Keel's verifier beside it |
+Two things a bespoke implementation commonly does differently, which Keel changes
+deliberately:
 
-odvpn is the "large app adopts the telemetry/bootstrap slice only" case: its eleven
-stacks keep their jobs, `KeelBackend` replaces just the stats table + ping/stats routes,
-and its `usage.js` page is retired for `dashboard/`.
-
-**odvpn keeps its own billing stack.** Its purchase model is credit-based (buy blocks of
-credits, deduct on each VPN session), with a ledger, consumption reporting, and refund reversal
-that no framework models. Keel's `KeelAppStore` is verification-only, so there is nothing to map
-onto or reject — odvpn's `VPNBilling` stays as-is (and is in fact where Keel's verifier was
-lifted from). Keel covers only the bootstrap/telemetry/stats slice; if odvpn later shares Keel's
-verifier, that is a code reuse, not a data model it has to adopt.
+- **OS, platform and dimension spreads dedup monthly, not daily.** If the app incremented
+  them on `firstToday`, `sum(osVersions)` was a sum of daily actives; after the cutover it
+  becomes ≈ MAU. The monthly figure is the correct one.
+- **Dedup state is persisted only after an accepted send.** An implementation that persists
+  first silently drops a day whenever a ping fails. Keel does not, so a rejected ping leaves
+  the day unconsumed.
 
 ## What no retrofit needs
 
 - A table migration or backfill. The keys match by construction.
-- Coordinated deploys for Maxi80, which has shipped clients in the wild. The backend
-  can move to Keel while old clients still call the legacy path, because aliases remap
-  to the right route and the flattened envelope reproduces the old response shape.
+- Coordinated client and backend deploys, *if* the app has shipped clients. The backend can
+  move to Keel while old clients still call the legacy path, because aliases remap to the
+  right route and the flattened envelope reproduces the old response shape.
 
-**However, Orthanc and odvpn are both pre-release: neither has shipped a client, neither
-has users.** Their retrofits are the clean case — the client and backend can ship
-together in a single coordinated update, with no aliases needed. The ping body is not
-backward-compatible across the Keel boundary (Keel requires closed enum values for
-`platform` and `licenseState`, and sends a single `profileBucket` dimension rather than
-the old `dimensions` map), so a mixed deploy — new backend, old client, or vice versa —
-would break. The solution is simple: don't do a mixed deploy.
+**A pre-release app is the clean case.** With no shipped client, the client and backend ship
+together in one update and no aliases are needed. Note that the ping body is *not*
+backward-compatible across the Keel boundary — Keel requires closed enum values for
+`platform` and `licenseState`, and takes a `dimensions` map rather than any bespoke
+single-bucket field — so a mixed deploy of a new backend with an old client, or the reverse,
+would break. The solution is not to do a mixed deploy.
 
-A per-deployment opt-in compatibility shim is possible in principle (translate old enum
-values server-side, accept both body shapes), but there is no reason to build one for
-these two apps. If Maxi80 ever needs it, that decision belongs to its retrofit PR.
+A per-deployment compatibility shim is possible in principle (translate old enum values
+server-side, accept both body shapes). Nothing in the framework provides one, and an app that
+needs it should decide that in its own retrofit.

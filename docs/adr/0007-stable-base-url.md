@@ -18,12 +18,11 @@ AWS's generated hostnames are all derived from a resource id:
 
 "Replaced" is not exotic. A stack deleted and recreated in a dev-then-prod migration, a
 region move, a change to a CloudFormation property that forces replacement, or switching
-front door (Orthanc is on a Function URL today and would move to an HTTP API to adopt
-Keel) all produce a new hostname. At that moment every already-installed copy of the app is
-talking to nothing.
+front door (a Function URL to an HTTP API, say) all produce a new hostname. At that moment
+every already-installed copy of the app is talking to nothing.
 
-Orthanc, Maxi80, and odvpn all currently ship a generated hostname. odvpn is the first to
-fix it, which is what prompted this ADR.
+Shipping a generated hostname is the easy default, and it is what every implementation that
+preceded this ADR did — which is what prompted writing it down.
 
 ## Decision
 
@@ -47,8 +46,8 @@ reasons, in order of how much trouble they cause:
 
 1. **DNS may not be in Route 53.** CDK can only auto-validate a DNS-validated certificate
    when it can write the validation record itself, which means a Route 53 hosted zone.
-   odvpn's DNS is on Cloudflare (`cdk/lib/server-cert-stack.ts` does ACME DNS-01 with a
-   Cloudflare token). With an external provider, `CertificateValidation.fromDns()` with no
+   DNS hosted at a registrar or another provider (Cloudflare, for instance) is outside CDK's
+   reach. With an external provider, `CertificateValidation.fromDns()` with no
    zone leaves the **first deploy hanging** on a CNAME nobody has created, for up to hours,
    then rolling back.
 2. **Certificate lifecycle should not gate application deploys.** Issuance and validation
