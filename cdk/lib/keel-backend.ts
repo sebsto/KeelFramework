@@ -35,6 +35,22 @@ export interface KeelAliasRoute {
   readonly envelope?: "standard" | "flattened";
 }
 
+/** One app-owned route served by the app's own executable, registered next to Keel's. */
+export interface KeelAppRoute {
+  /** The route path, e.g. `/v1/checkout`. Must not collide with a Keel core route. */
+  readonly path: string;
+
+  /** HTTP method. */
+  readonly method: "GET" | "POST";
+
+  /**
+   * Whether the route takes no authorizer. Defaults to `false` (the configured authorizer
+   * applies). Set `true` for a route a third party calls without your credentials — e.g. a
+   * payment provider's webhook.
+   */
+  readonly public?: boolean;
+}
+
 export interface KeelBackendProps {
   /** Short app identifier, used in resource names and defaults. Lowercase. */
   readonly appName: string;
@@ -70,6 +86,22 @@ export interface KeelBackendProps {
 
   /** Extra paths for the canonical handlers, e.g. `{"/station": {route: "/v1/bootstrap", envelope: "flattened"}}`. */
   readonly aliasRoutes?: Record<string, KeelAliasRoute>;
+
+  /**
+   * Routes the app serves from its own executable, registered on the API next to Keel's.
+   *
+   * Each entry registers the route AND — when `allowedOrigins` is set — its `OPTIONS`
+   * preflight, so a browser making a non-simple cross-origin request (a JSON `POST`, or any
+   * request with a custom header) clears preflight instead of 404ing at the gateway. Register
+   * a route by hand with `httpApi.addRoutes(...)` and it is easy to forget the preflight; this
+   * prop makes the two inseparable.
+   *
+   * The integration is the same Lambda as Keel's routes — an app with its own routes ships one
+   * executable that mounts Keel's routes and its own (see docs/INTEGRATION.md "App-owned
+   * routes"). A route defaults to the configured authorizer; set `public: true` for one that
+   * takes no auth (e.g. a payment webhook the provider calls without your credentials).
+   */
+  readonly appRoutes?: KeelAppRoute[];
 
   /**
    * Path to the built `KeelLambda` zip. Defaults to the AWSLambdaBuilder plugin's output
@@ -293,7 +325,23 @@ export class KeelBackend extends Construct {
       );
     }
 
-    const routes: Array<{ path: string; method: apigwv2.HttpMethod }> = [
+    // Synth-time guard: an app route must not collide with a core route, the notification
+    // route, or an alias path — a duplicate `METHOD /path` on the same HTTP API fails at
+    // `cdk deploy`, and the whole point of this guard is to catch that at synth instead.
+    const reservedPaths = new Set<string>([
+      ...KEEL_CORE_ROUTES.map((r) => r.path),
+      ...(notificationRoute ? [notificationRoute.path] : []),
+      ...Object.keys(props.aliasRoutes ?? {}),
+    ]);
+    for (const appRoute of props.appRoutes ?? []) {
+      if (reservedPaths.has(appRoute.path)) {
+        throw new Error(
+          `appRoutes path ${appRoute.path} collides with a Keel-owned route`,
+        );
+      }
+    }
+
+    const routes: Array<{ path: string; method: apigwv2.HttpMethod; isPublic?: boolean }> = [
       ...KEEL_CORE_ROUTES.map((route: KeelRoute) => ({
         path: route.path,
         method: route.method === "GET" ? apigwv2.HttpMethod.GET : apigwv2.HttpMethod.POST,
@@ -313,6 +361,11 @@ export class KeelBackend extends Construct {
         path: aliasPath,
         method: alias.route === "/v1/ping" ? apigwv2.HttpMethod.POST : apigwv2.HttpMethod.GET,
       })),
+      ...(props.appRoutes ?? []).map((appRoute: KeelAppRoute) => ({
+        path: appRoute.path,
+        method: appRoute.method === "GET" ? apigwv2.HttpMethod.GET : apigwv2.HttpMethod.POST,
+        isPublic: appRoute.public ?? false,
+      })),
     ];
 
     for (const route of routes) {
@@ -320,9 +373,12 @@ export class KeelBackend extends Construct {
       // the API's own route table — public means no authorizer attached, not an
       // authorizer that waves it through. An unknown path 404s at the gateway.
       // The notification route is public whatever the mode: Apple cannot authenticate,
-      // and the payload's own signature is the boundary.
+      // and the payload's own signature is the boundary. An app route carries its own
+      // `public` flag (defaulting to authorized).
       const isPublic =
-        publicRoutes.includes(route.path) || route.path === "/v1/appstore-notification";
+        route.isPublic === true
+        || publicRoutes.includes(route.path)
+        || route.path === "/v1/appstore-notification";
       this.httpApi.addRoutes({
         path: route.path,
         methods: [route.method],
@@ -340,6 +396,7 @@ export class KeelBackend extends Construct {
         ...KEEL_CORE_ROUTES.map((r: KeelRoute) => r.path),
         ...(notificationRoute ? [notificationRoute.path] : []),
         ...Object.keys(props.aliasRoutes ?? {}),
+        ...(props.appRoutes ?? []).map((r) => r.path),
       ]);
       for (const p of corsPaths) {
         this.httpApi.addRoutes({
