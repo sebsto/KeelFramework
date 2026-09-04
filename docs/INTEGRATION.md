@@ -83,7 +83,7 @@ Keel is a Swift package with zero third-party dependencies. Add it in Xcode or i
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/your-org/KeelFramework.git", from: "1.0.0"),
+    .package(url: "https://github.com/your-org/KeelFramework.git", from: "0.1.0"),
 ]
 ```
 
@@ -1078,14 +1078,14 @@ build:
 - **`swift-aws-lambda-runtime` on the 3.x line** (`3.0.0-rc1` today). Keel is on 3.x for the
   `LambdaRuntime` API, response streaming, and the `AWSLambdaBuilder` plugin CDK reads the
   zip from. Resolve the same 3.x major in your own package.
-- **The `lambda-kit` fork, pinned by exact revision.** Keel's router uses the `Routing`
+- **The `lambda-kit` fork, pinned to an exact version.** Keel's router uses the `Routing`
   library from `github.com/sebsto/lambda-kit` — a fork whose *only* change is widening the
   runtime pin to 3.x (upstream `SongShift/lambda-kit` still pins 2.6.x). `Package.swift`
-  pins it to the exact revision `5b2b025635a872345e7711177fe5b56a5ce81fad` (the current HEAD
-  of the fork's `support-runtime-3` branch) rather than tracking the branch, so a force-push
-  can't quietly change what builds. An app mounting Keel beside its own Lambdas must resolve
-  that same pin: depend on the same fork revision, or let SPM share Keel's resolution by not
-  declaring a competing `lambda-kit` requirement.
+  pins it to exact version `0.1.0`, so a force-push can't quietly change what builds. It is a
+  version rather than a revision because SwiftPM refuses to resolve a package requested by
+  version whose own dependencies are requested by revision — which would make Keel itself
+  impossible to depend on by tag. You do not need to declare `lambda-kit` at all: leave your
+  package silent on it and SPM uses Keel's pin.
 
 **The fork is temporary.** It carries no behaviour of its own to preserve — it only widens a
 version range. It goes away the moment upstream `lambda-kit` depends on
@@ -1543,7 +1543,7 @@ let package = Package(
     name: "MyAppBackend",
     platforms: [.macOS(.v15)],
     dependencies: [
-        .package(url: "https://github.com/sebsto/KeelFramework.git", from: "1.0.0"),
+        .package(url: "https://github.com/sebsto/KeelFramework.git", from: "0.1.0"),
         // …only what your OWN routes need on top.
     ],
     targets: [
@@ -1563,6 +1563,24 @@ That is the same package URL the app target uses; the products differ. You do no
 `swift-aws-lambda-runtime`, `lambda-kit`, `soto-core` or `swift-log` yourself — they come
 with the server products at versions Keel has verified together, so your function cannot
 drift onto a runtime the framework has not been built against.
+
+**If your routes talk to DynamoDB or SSM themselves**, add the upstream `soto` package to
+your own manifest and use it directly:
+
+```swift
+.package(url: "https://github.com/soto-project/soto.git", from: "7.0.0"),
+```
+
+Keel's own AWS clients (`KeelSotoDynamoDB`, `KeelSotoSSM`) are **internal**: they are
+code-generated, carry only the handful of operations the framework itself calls, and are
+built with relaxed compiler settings because they are not hand-maintained. Exporting them
+would turn generated code into public API and make regenerating them a breaking change, so
+they are not products you can import. The `Keel` prefix on their module names exists so that
+your `soto` and Keel's copy can coexist in one package graph — an earlier version named them
+`SotoDynamoDB` / `SotoSSM` and any app bringing `soto` failed to build.
+
+`soto-core` is resolved once for the whole graph, so bringing `soto` adds its generated
+service shapes, not a second signing/HTTP stack.
 
 Then the three steps:
 

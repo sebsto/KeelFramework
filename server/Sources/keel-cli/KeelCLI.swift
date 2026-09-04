@@ -1,7 +1,7 @@
 import ArgumentParser
 import KeelServer
 import KeelServerDynamoDB
-import SotoDynamoDB
+import KeelSotoDynamoDB
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials

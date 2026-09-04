@@ -1,8 +1,8 @@
 import AWSLambdaEvents
 import AWSLambdaRuntime
 import Configuration
+import KeelSotoSSM
 import Logging
-import SotoSSM
 
 /// The `sharedSecret` authorizer: one secret, read from SSM Parameter Store at cold start,
 /// compared against the `Authorization` header of every request API Gateway forwards.

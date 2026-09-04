@@ -1,5 +1,5 @@
 public import KeelServer
-public import SotoDynamoDB
+public import KeelSotoDynamoDB
 
 /// `CounterStore` on the single Keel table.
 ///
