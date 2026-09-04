@@ -90,7 +90,11 @@ struct ConfigCommand: AsyncParsableCommand {
                 // backend behaves as `.empty` — worth saying in the same shape a set would take.
                 print(try Self.rendered(RemoteConfig.empty))
                 // The note goes to stderr so `keel config get | jq` still parses.
-                fputs("(no config item stored; showing the empty defaults)\n", stderr)
+                // Written through the POSIX fd (2) rather than the C `stderr` global,
+                // which is a non-concurrency-safe `var` under Swift 6 strict concurrency
+                // on Linux — and `FileHandle` is absent when Linux imports
+                // FoundationEssentials rather than full Foundation.
+                Self.writeStderr("(no config item stored; showing the empty defaults)\n")
                 return
             }
             print(try Self.rendered(config))
@@ -98,6 +102,22 @@ struct ConfigCommand: AsyncParsableCommand {
 
         static func rendered(_ config: RemoteConfig) throws -> String {
             String(decoding: try WireJSON.encoder(pretty: true).encode(config), as: UTF8.self)
+        }
+
+        /// Write a note to stderr via the POSIX fd (2). Avoids the C `stderr` global,
+        /// which is a non-concurrency-safe `var` on Linux, and works whether the file
+        /// imports full Foundation or FoundationEssentials.
+        static func writeStderr(_ message: String) {
+            let bytes = Array(message.utf8)
+            bytes.withUnsafeBytes { buffer in
+                var written = 0
+                while written < buffer.count {
+                    let n = write(
+                        2, buffer.baseAddress!.advanced(by: written), buffer.count - written)
+                    if n <= 0 { break }
+                    written += n
+                }
+            }
         }
     }
 

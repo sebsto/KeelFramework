@@ -1,6 +1,7 @@
 import Crypto
 import Foundation
 import SwiftASN1
+import Synchronization
 import X509
 
 @testable import KeelAppStore
@@ -21,76 +22,104 @@ enum TestPKI {
         }
     }
 
-    static let rootKey = P256.Signing.PrivateKey()
-    static let rootName = fixture {
-        try DistinguishedName {
-            CountryName("US")
-            OrganizationName("keel test")
-            CommonName("Keel Test Root")
-        }
+    /// The keys and certificates are built once and held together. On Apple platforms
+    /// `P256.Signing.PrivateKey` and `Certificate` are `Sendable`, but under swift-crypto
+    /// on Linux they are not, so a bare `static let` of them trips Swift 6 strict
+    /// concurrency. The whole PKI is deterministic and must share one set of keys (a JWS
+    /// signed by `leafKey` has to verify against `leaf`/`root`), so it is built exactly
+    /// once and held in a `Mutex`, which is `Sendable` regardless of its contents — no
+    /// `nonisolated(unsafe)` and no other concurrency opt-out.
+    private struct Storage {
+        let rootKey: P256.Signing.PrivateKey
+        let root: Certificate
+        let leafKey: P256.Signing.PrivateKey
+        let leaf: Certificate
+        let strangerKey: P256.Signing.PrivateKey
+        let strangerRoot: Certificate
     }
 
-    static let root: Certificate = fixture {
-        try Certificate(
-            version: .v3,
-            serialNumber: .init(),
-            publicKey: .init(rootKey.publicKey),
-            notValidBefore: start - 86_400,
-            notValidAfter: start + 86_400 * 365,
-            issuer: rootName,
-            subject: rootName,
-            signatureAlgorithm: .ecdsaWithSHA256,
-            extensions: try Certificate.Extensions {
-                Critical(BasicConstraints.isCertificateAuthority(maxPathLength: nil))
-            },
-            issuerPrivateKey: .init(rootKey))
-    }
+    private static let storage = Mutex(build())
 
-    static let leafKey = P256.Signing.PrivateKey()
-
-    static let leaf: Certificate = fixture {
-        try Certificate(
-            version: .v3,
-            serialNumber: .init(),
-            publicKey: .init(leafKey.publicKey),
-            notValidBefore: start - 86_400,
-            notValidAfter: start + 86_400 * 30,
-            issuer: rootName,
-            subject: try DistinguishedName {
+    private static func build() -> Storage {
+        let rootKey = P256.Signing.PrivateKey()
+        let rootName = fixture {
+            try DistinguishedName {
                 CountryName("US")
                 OrganizationName("keel test")
-                CommonName("Keel Test Leaf")
-            },
-            signatureAlgorithm: .ecdsaWithSHA256,
-            extensions: try Certificate.Extensions {
-                Critical(BasicConstraints.notCertificateAuthority)
-            },
-            issuerPrivateKey: .init(rootKey))
-    }
-
-    /// A second, unrelated root — for asserting that a chain anchored elsewhere fails.
-    static let strangerKey = P256.Signing.PrivateKey()
-    static let strangerName = fixture {
-        try DistinguishedName {
-            CommonName("Some Other Root")
+                CommonName("Keel Test Root")
+            }
         }
+        let root: Certificate = fixture {
+            try Certificate(
+                version: .v3,
+                serialNumber: .init(),
+                publicKey: .init(rootKey.publicKey),
+                notValidBefore: start - 86_400,
+                notValidAfter: start + 86_400 * 365,
+                issuer: rootName,
+                subject: rootName,
+                signatureAlgorithm: .ecdsaWithSHA256,
+                extensions: try Certificate.Extensions {
+                    Critical(BasicConstraints.isCertificateAuthority(maxPathLength: nil))
+                },
+                issuerPrivateKey: .init(rootKey))
+        }
+
+        let leafKey = P256.Signing.PrivateKey()
+        let leaf: Certificate = fixture {
+            try Certificate(
+                version: .v3,
+                serialNumber: .init(),
+                publicKey: .init(leafKey.publicKey),
+                notValidBefore: start - 86_400,
+                notValidAfter: start + 86_400 * 30,
+                issuer: rootName,
+                subject: try DistinguishedName {
+                    CountryName("US")
+                    OrganizationName("keel test")
+                    CommonName("Keel Test Leaf")
+                },
+                signatureAlgorithm: .ecdsaWithSHA256,
+                extensions: try Certificate.Extensions {
+                    Critical(BasicConstraints.notCertificateAuthority)
+                },
+                issuerPrivateKey: .init(rootKey))
+        }
+
+        let strangerKey = P256.Signing.PrivateKey()
+        let strangerName = fixture {
+            try DistinguishedName {
+                CommonName("Some Other Root")
+            }
+        }
+        let strangerRoot: Certificate = fixture {
+            try Certificate(
+                version: .v3,
+                serialNumber: .init(),
+                publicKey: .init(strangerKey.publicKey),
+                notValidBefore: start - 86_400,
+                notValidAfter: start + 86_400 * 365,
+                issuer: strangerName,
+                subject: strangerName,
+                signatureAlgorithm: .ecdsaWithSHA256,
+                extensions: try Certificate.Extensions {
+                    Critical(BasicConstraints.isCertificateAuthority(maxPathLength: nil))
+                },
+                issuerPrivateKey: .init(strangerKey))
+        }
+
+        return Storage(
+            rootKey: rootKey, root: root,
+            leafKey: leafKey, leaf: leaf,
+            strangerKey: strangerKey, strangerRoot: strangerRoot)
     }
 
-    static let strangerRoot: Certificate = fixture {
-        try Certificate(
-            version: .v3,
-            serialNumber: .init(),
-            publicKey: .init(strangerKey.publicKey),
-            notValidBefore: start - 86_400,
-            notValidAfter: start + 86_400 * 365,
-            issuer: strangerName,
-            subject: strangerName,
-            signatureAlgorithm: .ecdsaWithSHA256,
-            extensions: try Certificate.Extensions {
-                Critical(BasicConstraints.isCertificateAuthority(maxPathLength: nil))
-            },
-            issuerPrivateKey: .init(strangerKey))
-    }
+    static var rootKey: P256.Signing.PrivateKey { storage.withLock { $0.rootKey } }
+    static var root: Certificate { storage.withLock { $0.root } }
+    static var leafKey: P256.Signing.PrivateKey { storage.withLock { $0.leafKey } }
+    static var leaf: Certificate { storage.withLock { $0.leaf } }
+    static var strangerKey: P256.Signing.PrivateKey { storage.withLock { $0.strangerKey } }
+    static var strangerRoot: Certificate { storage.withLock { $0.strangerRoot } }
 
     static func derBase64(_ certificate: Certificate) -> String {
         fixture {
