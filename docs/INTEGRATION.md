@@ -1035,7 +1035,7 @@ make lambda
 Under the hood this runs:
 
 ```sh
-swift package --disable-sandbox --package-path server \
+swift package --disable-sandbox \
     --allow-network-connections docker \
     lambda-build \
     --cross-compile container \
@@ -1080,7 +1080,7 @@ build:
   zip from. Resolve the same 3.x major in your own package.
 - **The `lambda-kit` fork, pinned by exact revision.** Keel's router uses the `Routing`
   library from `github.com/sebsto/lambda-kit` — a fork whose *only* change is widening the
-  runtime pin to 3.x (upstream `SongShift/lambda-kit` still pins 2.6.x). `server/Package.swift`
+  runtime pin to 3.x (upstream `SongShift/lambda-kit` still pins 2.6.x). `Package.swift`
   pins it to the exact revision `5b2b025635a872345e7711177fe5b56a5ce81fad` (the current HEAD
   of the fork's `support-runtime-3` branch) rather than tracking the branch, so a force-push
   can't quietly change what builds. An app mounting Keel beside its own Lambdas must resolve
@@ -1453,7 +1453,7 @@ every flag reverts to its compiled-in value. Seed it with `keel config replace`:
 
 ```sh
 # Build the CLI (runs on macOS, talks to DynamoDB directly)
-swift build --package-path server --product keel
+swift build --product keel
 
 # Set the table name from the stack output
 export TABLE_NAME=<BackendTableName from cdk deploy output>
@@ -1534,7 +1534,37 @@ don't fork `KeelLambda` to do this. You write your own Lambda executable that
 depends on the `KeelServer` and `KeelRouter` libraries, mounts Keel's routes on
 a shared router builder, adds your own routes, then builds the router.
 
-The whole pattern is three steps:
+The whole pattern is three steps, and it starts with one dependency line. Your Lambda's
+`Package.swift` takes Keel by URL and picks the server products it imports:
+
+```swift
+// swift-tools-version: 6.2
+let package = Package(
+    name: "MyAppBackend",
+    platforms: [.macOS(.v15)],
+    dependencies: [
+        .package(url: "https://github.com/sebsto/KeelFramework.git", from: "1.0.0"),
+        // …only what your OWN routes need on top.
+    ],
+    targets: [
+        .executableTarget(
+            name: "MyAppLambda",
+            dependencies: [
+                .product(name: "KeelServer", package: "KeelFramework"),
+                .product(name: "KeelRouter", package: "KeelFramework"),
+                .product(name: "KeelServerDynamoDB", package: "KeelFramework"),
+            ]
+        )
+    ]
+)
+```
+
+That is the same package URL the app target uses; the products differ. You do not declare
+`swift-aws-lambda-runtime`, `lambda-kit`, `soto-core` or `swift-log` yourself — they come
+with the server products at versions Keel has verified together, so your function cannot
+drift onto a runtime the framework has not been built against.
+
+Then the three steps:
 
 ```swift
 import KeelRouter   // KeelRouter, and builder.mount(keel:)

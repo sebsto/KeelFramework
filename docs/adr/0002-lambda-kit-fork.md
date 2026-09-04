@@ -19,7 +19,7 @@ The server needs an HTTP router over API Gateway events. The candidates:
 
 Use `swift-aws-lambda-runtime` **3.0.0-rc1** and `sebsto/lambda-kit` fork
 (`github.com/sebsto/lambda-kit`, branch `support-runtime-3`), taking the `Routing` library
-only. `server/Package.swift` pins the dependency by **exact revision**
+only. `Package.swift` pins the dependency by **exact revision**
 `5b2b025635a872345e7711177fe5b56a5ce81fad` (the current HEAD of `support-runtime-3`)
 rather than by branch name, so a force-push cannot silently change what builds.
 
@@ -48,7 +48,7 @@ A conflicting declaration causes SPM to reject the build. See
 **The fork is temporary.** It carries no behaviour the codebase actually uses — it only
 widens a version range. It goes away the moment upstream `lambda-kit` depends on
 `swift-aws-lambda-runtime` v3, at which point Keel repoints the dependency to a tagged
-upstream `lambda-kit` release. That is a `server/Package.swift`-only change with **no
+upstream `lambda-kit` release. That is a `Package.swift`-only change with **no
 code** to touch in Keel or any consuming app.
 
 ## Consequences

@@ -57,8 +57,7 @@ model, request flows, privacy model, infrastructure, cost model.
 
 | Artifact | Path | Consume as |
 |---|---|---|
-| Client library | `Package.swift` | SPM: `KeelCore`, `KeelClient`, `KeelClientSigning`, `KeelClientTesting` |
-| Server library + Lambdas | `server/Package.swift` | SPM: `KeelServer`, `KeelServerDynamoDB`, `KeelServerTesting`; executables `KeelLambda`, `KeelAuthorizerLambda`, `keel` |
+| Swift package | `Package.swift` | one package URL. Client: `KeelCore`, `KeelClient`, `KeelClientSigning`, `KeelClientTesting`. Server: `KeelServer`, `KeelRouter`, `KeelServerDynamoDB`, `KeelServerTesting`, `KeelAppStore*`. Executables: `KeelLambda`, `KeelAuthorizerLambda`, `keel` |
 | Infrastructure | `cdk/` | npm: `@keel/cdk` → `KeelBackend`, `KeelAuth`, `KeelStatsSite` |
 | Stats dashboard | `dashboard/` | static files, deployed by `KeelStatsSite` |
 | Reference app | `Templates/SampleApp/` | copy, or `keel new` |
@@ -144,17 +143,17 @@ plans sketched in `docs/RETROFIT.md`.
 ## Layout
 
 ```
-Package.swift              client package (Apple + Skip-safe core)
+Package.swift              one package, one URL: client libs, server libs, Lambdas
   Sources/KeelCore/        portable: wire types, transport, pure decisions — read its README
   Sources/KeelClient/      Apple: @Observable stores, SwiftUI, StoreKit
   Sources/KeelClientSigning/ Apple: reference KeelSigV4Transport for KeelAuth.iam()
   Sources/KeelClientTesting/
-server/Package.swift       server package (Linux + macOS)
-  Sources/KeelServer/      wire types, CounterSchema, handlers, store protocols
-  Sources/KeelServerDynamoDB/
-  Sources/KeelLambda/      the ready-made function
-  Sources/KeelAppStore/    App Store JWS + notification verification (optional)
-  Sources/keel-cli/        config get/set, stats dump
+  server/Sources/KeelServer/  wire types, CounterSchema, handlers, store protocols
+  server/Sources/KeelServerDynamoDB/
+  server/Sources/KeelRouter/  the route table; builder.mount(keel:)
+  server/Sources/KeelLambda/  the ready-made function
+  server/Sources/KeelAppStore/ App Store JWS + notification verification (optional)
+  server/Sources/keel-cli/    config get/set, stats dump
 cdk/                       @keel/cdk construct library
 dashboard/                 static stats site
 Templates/SampleApp/       end-to-end reference

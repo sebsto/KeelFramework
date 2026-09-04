@@ -38,41 +38,28 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      - name: Cache client SPM
+      - name: Cache SPM
         uses: actions/cache@v4
         with:
           path: .build
-          key: spm-client-${{ runner.os }}-${{ hashFiles('Package.swift') }}
-          restore-keys: spm-client-${{ runner.os }}-
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
 
-      - name: Cache server SPM
-        uses: actions/cache@v4
-        with:
-          path: server/.build
-          key: spm-server-${{ runner.os }}-${{ hashFiles('server/Package.resolved') }}
-          restore-keys: spm-server-${{ runner.os }}-
+      - name: Build
+        run: swift build
 
-      - name: Build client
-        run: swift build --package-path .
-
-      - name: Build server
-        run: swift build --package-path server
-
-      - name: Test client
-        run: swift test --package-path .
-
-      - name: Test server
-        run: swift test --package-path server
+      - name: Test
+        run: swift test
 
       - name: Lint Swift
         run: make lint-swift
 
   # ── Swift server on Linux (the Lambda target) ────────────────────────────
-  # The server package ships as a PROVIDED_AL2023 arm64 Lambda, so it must build
-  # and test on Linux (swift-crypto / swift-corelibs-foundation), not only on the
-  # macOS runner above. The client package is Apple/Skip code and stays macOS-only;
-  # keel-cli lives in the server package and gets Linux compile coverage through
-  # `swift test --package-path server`.
+  # The Lambda ships as PROVIDED_AL2023 arm64, so the server half must build and test
+  # on Linux (swift-crypto / swift-corelibs-foundation), not only on the macOS runner
+  # above. Package.swift omits the Apple-only client targets when SwiftPM runs on
+  # Linux, so a plain `swift build` here is the server half; the client is Apple/Skip
+  # code and stays macOS-only. keel-cli gets its Linux compile coverage from this leg.
   server-linux:
     name: Swift server — Linux build + test
     runs-on: ubuntu-latest
@@ -83,18 +70,18 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      - name: Cache server SPM
+      - name: Cache SPM
         uses: actions/cache@v4
         with:
-          path: server/.build
-          key: spm-server-linux-${{ hashFiles('server/Package.resolved') }}
-          restore-keys: spm-server-linux-
+          path: .build
+          key: spm-linux-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-linux-
 
-      - name: Build server
-        run: swift build --package-path server
+      - name: Build
+        run: swift build
 
-      - name: Test server
-        run: swift test --package-path server
+      - name: Test
+        run: swift test
 
   # ── CDK constructs (TypeScript) ──────────────────────────────────────────
   cdk:

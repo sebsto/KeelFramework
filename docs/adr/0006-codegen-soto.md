@@ -18,7 +18,7 @@ The Lambda needs DynamoDB `UpdateItem`, `Query`, `GetItem`, and `PutItem`. Four 
 Depend on **`soto-core` only**, and generate a minimal DynamoDB client into
 `server/Sources/Soto/DynamoDB` with `scripts/generate-soto.sh`, covering just the
 operations and shapes Keel uses. The generated target builds with relaxed
-`SwiftSetting`s (`generatedSettings` in `server/Package.swift`) because it is not ours to fix
+`SwiftSetting`s (`generatedSettings` in `Package.swift`) because it is not ours to fix
 and must not be edited by hand.
 
 ## Consequences

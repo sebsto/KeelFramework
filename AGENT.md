@@ -21,8 +21,7 @@ Authoritative references, in the order to consult them:
 
 | Artifact | Where | An app depends on |
 |---|---|---|
-| Client SPM package | repo root `Package.swift` | `KeelClient` (Apple) and/or `KeelCore` (portable/Skip) |
-| Server SPM package | `server/Package.swift` | usually nothing — deploy `KeelLambda` as-is; apps with their own routes depend on `KeelServer` + `KeelRouter` |
+| Swift package | repo root `Package.swift` | client: `KeelClient` (Apple) and/or `KeelCore` (portable/Skip). Backend with its own routes: `KeelServer` + `KeelRouter` (+ `KeelServerDynamoDB`). Otherwise deploy `KeelLambda` as-is |
 | CDK constructs | `cdk/` (`@keel/cdk`) | `KeelBackend`, `KeelAuth`, `KeelStatsSite` |
 
 Plus `dashboard/` (static stats page, restyled via `tokens.css` only) and
@@ -68,7 +67,7 @@ it works.
     is the mechanism that makes the privacy claim auditable, and a test enforces it.
 
 Every change must end green: `make test && make lint`, and
-`swift build --package-path server --swift-sdk <static-linux-sdk>` for server changes.
+`swift build --swift-sdk <static-linux-sdk>` for server changes.
 
 ---
 
