@@ -5,7 +5,7 @@ describe("validateDomainName", () => {
     expect(validateDomainName("api.myapp.com")).toBe("api.myapp.com");
     expect(validateDomainName("API.MyApp.com")).toBe("api.myapp.com");
     expect(validateDomainName("api.myapp.com.")).toBe("api.myapp.com");
-    expect(validateDomainName("api.odvpn.stormacq.net")).toBe("api.odvpn.stormacq.net");
+    expect(validateDomainName("api.sub.example.co.uk")).toBe("api.sub.example.co.uk");
   });
 
   test("rejects a URL — the most likely copy-paste mistake", () => {

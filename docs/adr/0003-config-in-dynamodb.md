@@ -8,8 +8,8 @@
 Something has to store them, and the kill switch in particular has to be changeable in
 seconds without a deployment.
 
-Maxi80's current answer is a `FEATURE_FLAGS` environment variable parsed at cold start.
-Orthanc and odvpn have no config service at all.
+The common answers are a `FEATURE_FLAGS` environment variable parsed at cold start, which
+needs a deployment to change, or no config service at all.
 
 | Option | Change latency | Reads | Notes |
 |---|---|---|---|
@@ -41,7 +41,7 @@ because they change only when the stack changes.
 ## The one exception
 
 `FEATURE_FLAGS="a=true,b=1"` as an environment variable still works, layered *over* the
-table, kept from Maxi80. It exists for the case where the table is unreachable or a flag
+table. It exists for the case where the table is unreachable or a flag
 must be flipped faster than a `keel config set` round-trip. Malformed entries are dropped
 and logged rather than fatal — a typo in an emergency override must never take
 `/v1/bootstrap` down, which is the failure mode it exists to prevent.

@@ -17,7 +17,7 @@ struct FeatureFlagsOverrideTests {
     }
 
     @Test("The environment-variable format parses, spaces and all")
-    func parsesMaxi80Format() {
+    func parsesCommaSeparatedPairs() {
         let override = FeatureFlagsOverride(
             environmentValue: "anniversary_cover=false, sleep_timer=1")
         #expect(override.values == ["anniversary_cover": false, "sleep_timer": true])

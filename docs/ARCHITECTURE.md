@@ -187,8 +187,8 @@ restriction — that is a second, separately named flag, not a change to this on
 
 **Alias routes.** A retrofit can declare extra paths for the same handler, optionally with
 `envelope: flattened`, which emits the `app` payload's keys at the top level beside
-`features`. That is exactly Maxi80's current `/station` shape, so shipped clients keep
-working while new builds move to `/v1/bootstrap`.
+`features`. That is the shape a pre-Keel client may already expect from its own bootstrap
+endpoint, so shipped builds keep working while new ones move to `/v1/bootstrap`.
 
 ### `POST /v1/ping`
 
@@ -300,14 +300,15 @@ two existing implementations disagreed about:
 | `firstThisMonth` | `AGG#MAU`, `AGG#MAU#<state>`, `AGG#OS#<month>`, `AGG#PLAT#<month>`, `AGG#VER#<month>`, one `AGG#DIM#<name>#<month>` per accepted dimension |
 | `firstThisVersion` | `AGG#VER#<month>` |
 
-Two decisions in there are worth stating, because both existing apps got them differently:
+Two decisions in there are worth stating, because a hand-written backend can reasonably get
+them wrong:
 
-- **OS, platform and dimension spreads are monthly, not daily.** odvpn increments the OS
-  spread on `firstToday`, which makes its total a sum of daily actives — comparable to nothing
-  else it publishes. Deduping monthly, as Orthanc does, makes `sum(osVersions) ≈ mau`: one
-  observation per install per month, the same census MAU takes.
+- **OS, platform and dimension spreads are monthly, not daily.** Incrementing the OS spread
+  on `firstToday` makes its total a sum of daily actives — comparable to nothing else the
+  backend publishes. Deduping monthly makes `sum(osVersions) ≈ mau`: one observation per
+  install per month, the same census MAU takes.
 - **The version spread is both monthly *and* on upgrade.** Driving it from `firstThisVersion`
-  alone (which both apps do) is subtly broken: that boolean fires once per install per version
+  alone — the obvious choice — is subtly broken: that boolean fires once per install per version
   *ever*, so `AGG#VER#2026-09` would hold only the installs that changed version during
   September and none of the ones that stayed put. Adding the monthly census fixes it. An
   install that upgrades mid-month is then counted under both versions for that month, so
@@ -350,11 +351,12 @@ All of this lives in one type, `CounterSchema` — nothing else in the server bu
 string interpolation, so the table's shape can be read in one file and a rename is a compile
 error rather than a silently orphaned partition.
 
-**Compatibility.** These keys are identical to what Orthanc and odvpn already write, so
-retrofitting either app onto Keel needs no data migration — point the new handler at the
-existing table and the history is intact. Keel adds `AGG#PLAT#` and `AGG#DIM#`; Orthanc's
-`AGG#PROFILES#<month>` becomes `AGG#DIM#profiles#<month>`, which is the one rename, and it
-is optional (a legacy dimension name can be configured verbatim).
+**Compatibility.** These key names and stamp formats are a deliberate compatibility surface:
+they match the aggregate-counter shape a bespoke telemetry backend typically writes, so a
+retrofit needs no data migration — point the new handler at the existing table and the
+history is intact. `AGG#PLAT#` and `AGG#DIM#` are additions. A pre-existing per-dimension
+key such as `AGG#PROFILES#<month>` maps to `AGG#DIM#profiles#<month>`; that rename is
+optional, since a legacy dimension name can be configured verbatim.
 
 Timestamps use UTC everywhere, and the day/month stamps are computed with pure epoch
 arithmetic (Howard Hinnant's `civil_from_days`) rather than `Calendar`, which is absent from
@@ -417,8 +419,8 @@ sequenceDiagram
 
 The `firstPaidLaunch` ratchet latches only on a ping the server *accepted*: a conversion is
 once per install, so a dropped one is lost forever, unlike a daily dedup boolean that simply
-re-fires tomorrow. (odvpn's implementation latches unconditionally — this is one of the
-inconsistencies the framework resolves.)
+re-fires tomorrow. Latching before the server has accepted the ping loses conversions
+outright, which is why the order matters here and not for the daily booleans.
 
 ### Stats
 
@@ -445,8 +447,9 @@ sequenceDiagram
 
 ## 6. Client architecture
 
-Two modules, because Maxi80 ships the same Swift source to Android through Skip and Skip
-cannot see `Observation`, `os.Logger`, or `StoreKit`.
+Two modules, so an app can ship the same Swift source to Android through Skip: Skip cannot
+see `Observation`, `os.Logger`, or `StoreKit`, and confining them to one module keeps the
+other transpilable.
 
 **`KeelCore` — portable, no dependencies.** Wire types; `HTTPTransport` (a protocol) and
 `URLSessionTransport` (guarded for `FoundationNetworking`); `BackendClient`, which races
@@ -532,7 +535,7 @@ the flags are lenient, because the stakes invert: a dropped flag loses one overr
 dropped alias is a shipped client's route answering 404 — so it is logged at error level.
 
 **Why soto, code-generated.** `aws-sdk-swift`'s aws-crt TLS layer crashes at Lambda cold
-start (observed in Maxi80). `scripts/generate-soto.sh` emits a minimal DynamoDB client from
+start. `scripts/generate-soto.sh` emits a minimal DynamoDB client from
 soto's generator that depends only on `SotoCore`, which keeps the binary small and the cold
 start short. lambda-kit's `DynamoQueries` `@Table` macro is not used for the counter table —
 every write there is an `ADD` on a key the schema builds, which the macro doesn't model. (An
@@ -573,9 +576,9 @@ Auth is a strategy, not a fork of the construct:
 
 | Mode | Mechanism | Use when |
 |---|---|---|
-| `none` | no authorizer | everything is public by design (Orthanc) |
-| `sharedSecret` | Lambda authorizer comparing a header against an SSM parameter | you want casual abuse resistance without accounts (Maxi80) |
-| `iam` | `AWS_IAM`, SigV4 from Cognito Identity | the app already authenticates users (odvpn) |
+| `none` | no authorizer | every route is public by design, and the app carries no credential |
+| `sharedSecret` | Lambda authorizer comparing a header against an SSM parameter | you want casual abuse resistance without accounts |
+| `iam` | `AWS_IAM`, SigV4 from Cognito Identity | the app already authenticates its users |
 | `jwt` | HTTP API JWT authorizer | you have an OIDC issuer |
 
 `publicRoutes` opts individual routes out, so `/v1/stats` stays readable by the dashboard
@@ -600,8 +603,9 @@ Two ways to get there, and they need certificates in **different regions**:
 | `KeelStatsSite`'s `domainName` → CloudFront with an API origin | `us-east-1` | you also serve the dashboard, want it same-origin, and want `/v1/stats` edge-cached |
 
 **The certificate is an input, never created by the construct.** CDK can only auto-validate
-a DNS-validated certificate when it owns the hosted zone; with DNS anywhere else — odvpn's is
-on Cloudflare — `CertificateValidation.fromDns()` with no zone hangs the *first* deploy on a
+a DNS-validated certificate when it owns the hosted zone; with DNS hosted anywhere else —
+a registrar, Cloudflare, any external provider — `CertificateValidation.fromDns()` with no
+zone hangs the *first* deploy on a
 validation CNAME nobody has created. Pass an `ICertificate`: a CDK-validated one if you're on
 Route 53, `Certificate.fromCertificateArn` if you're not. `KeelBackend` outputs
 `regionalDomainName` and `regionalHostedZoneId` to point an external provider at.

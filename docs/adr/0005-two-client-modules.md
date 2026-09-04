@@ -4,7 +4,7 @@
 
 ## Context
 
-Maxi80 ships the same Swift source to Android through [Skip](https://skip.tools), which
+An adopting app may ship the same Swift source to Android through [Skip](https://skip.tools), which
 transpiles Swift to Kotlin. Skip supports a subset: no `Observation`, no `os.Logger`, no
 `StoreKit`, and a narrow slice of Foundation. An app that isn't cross-platform should not
 pay anything for this.
@@ -32,7 +32,7 @@ compiles nothing it doesn't use.
 
 ## Consequences
 
-**Good.** Maxi80's Android target can use the transport, the models, and every decision
+**Good.** An Android target can use the transport, the models, and every decision
 function — which is where the logic that must not diverge lives. Two modules is also just
 a good split for an Apple-only app: the pure layer is trivially unit-testable with no
 `@MainActor` hop and no observation machinery.

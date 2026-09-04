@@ -55,8 +55,9 @@ it works.
 7. **Validation rejects, never truncates.** Client strings that become DynamoDB keys are
    bounded; a limit violation is a 400 naming the field and rule, **never echoing the
    value**. Request bodies, IPs, and User-Agents are never logged.
-8. **Keys are backward-compatible.** `AGG#…` names and stamp formats match what Orthanc
-   and odvpn already store. Renaming one orphans history; prefer an awkward name.
+8. **Counter keys are a compatibility surface.** `AGG#…` names and stamp formats are chosen
+   so an app retrofitting an existing table keeps its history. Renaming one orphans that
+   history; prefer an awkward name.
 9. **Strict build settings stay on.** Both packages use `treatAllWarnings(as: .error)`,
    `ExistentialAny`, `MemberImportVisibility`, `InternalImportsByDefault`,
    `NonisolatedNonsendingByDefault`. `KeelCore` must additionally stay Skip-safe — read
@@ -155,7 +156,7 @@ function. Alias routes are deployment config: `ALIAS_ROUTES="/station=bootstrap.
 
 ## Migrating an existing app onto Keel
 
-Read `docs/RETROFIT.md` first — it has per-app notes for Maxi80, Orthanc, and odvpn.
+Read `docs/RETROFIT.md` first — it covers what moving an existing app onto Keel involves.
 This is the generic procedure. **The table schema is byte-compatible with existing
 `AGG#` data by design: no migration step may copy, rewrite, or delete counter items.**
 
@@ -232,11 +233,12 @@ Keel deliberately changes some counting behavior. Do not "fix" these back; do ca
 out in the migration PR:
 
 - **OS/platform/dimension spreads dedup monthly**, not daily. `sum(osVersions)` becomes
-  ≈ MAU from cutover (odvpn's old daily counting is the bug, not the baseline).
+  ≈ MAU from cutover (an app that previously counted these daily will see a step change;
+  the monthly figure is the correct one).
 - **Version spread is monthly census + on-upgrade**, so `sum(versions)` may exceed MAU.
 - **Dedup state persists only after an accepted send** — a failed ping retries next
   launch instead of silently dropping a day.
-- Vocabulary renames (e.g. Orthanc's `licenseState: "full"` → `paid`) start new cohort
+- Vocabulary renames (e.g. an app's `licenseState: "full"` → `paid`) start new cohort
   partitions at cutover; the chart has a visible seam at the migration date. Accepting
   the seam is the default; do not write server-side compatibility shims.
 

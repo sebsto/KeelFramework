@@ -6,7 +6,7 @@
 
 The Lambda needs DynamoDB `UpdateItem`, `Query`, `GetItem`, and `PutItem`. Four operations.
 
-- **`awslabs/aws-sdk-swift`** is the official SDK. Maxi80 hit a **crash at Lambda cold
+- **`awslabs/aws-sdk-swift`** is the official SDK. It was observed to **crash at Lambda cold
   start** in its `aws-crt` TLS layer (a C library built for the CRT's own event loop, not
   NIO's). It is also large: the DynamoDB client alone models every operation and shape.
 - **`soto-project/soto`** is the community SDK, pure Swift on NIO, known to work in Lambda.

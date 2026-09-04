@@ -4,10 +4,10 @@
 
 ## Context
 
-Three apps needed the same counters. Orthanc and odvpn independently arrived at the same
-schema: one table, `pk`/`sk`, partitions prefixed `AGG#`, values incremented with
-`UpdateItem ADD`. odvpn additionally split its backend into eleven CDK stacks and several
-functions, which turned out to be the part it regretted.
+Several apps needed the same anonymous counters, and independent implementations converged on
+the same schema: one table, `pk`/`sk`, partitions prefixed `AGG#`, values incremented with
+`UpdateItem ADD`. Where an implementation also spread its backend across many CDK stacks and
+several functions, that fan-out was the part that proved hard to live with.
 
 The alternatives considered were a time-series store (Timestream), per-event items
 aggregated later by a scheduled job, and a relational store.
@@ -39,10 +39,10 @@ were never stored. That is the price of storing no events, and it is the same pr
 buys the no-identifier property (ADR 0004): there is nothing to re-aggregate because there
 is nothing per-device to re-aggregate.
 
-**Compatibility.** The keys are byte-identical to what Orthanc and odvpn already write, so
-either app can be retrofitted onto Keel by pointing it at its existing table. The one
-rename is Orthanc's `AGG#PROFILES#<month>` → `AGG#DIM#profiles#<month>`, and a legacy
-dimension name can be configured verbatim to avoid even that.
+**Compatibility.** The keys match that converged schema byte for byte, so an app already
+writing it can be retrofitted by pointing Keel at its existing table. The one shape that
+moves is a per-dimension key such as `AGG#PROFILES#<month>` → `AGG#DIM#profiles#<month>`,
+and a legacy dimension name can be configured verbatim to avoid even that.
 
 ## Notes
 
