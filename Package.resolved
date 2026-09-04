@@ -1,5 +1,5 @@
 {
-  "originHash" : "9177f5e94d9d5e6e5b25dcf3dff0603b0ccfd239a8e0b92ea2102f195fafce8e",
+  "originHash" : "77a1b5c9835a8686076e239aa0afad093b3c498d3305e48f3a65ce46248c3112",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -24,7 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sebsto/lambda-kit.git",
       "state" : {
-        "revision" : "5b2b025635a872345e7711177fe5b56a5ce81fad"
+        "revision" : "5b2b025635a872345e7711177fe5b56a5ce81fad",
+        "version" : "0.1.0"
       }
     },
     {

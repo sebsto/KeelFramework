@@ -1078,14 +1078,14 @@ build:
 - **`swift-aws-lambda-runtime` on the 3.x line** (`3.0.0-rc1` today). Keel is on 3.x for the
   `LambdaRuntime` API, response streaming, and the `AWSLambdaBuilder` plugin CDK reads the
   zip from. Resolve the same 3.x major in your own package.
-- **The `lambda-kit` fork, pinned by exact revision.** Keel's router uses the `Routing`
+- **The `lambda-kit` fork, pinned to an exact version.** Keel's router uses the `Routing`
   library from `github.com/sebsto/lambda-kit` — a fork whose *only* change is widening the
   runtime pin to 3.x (upstream `SongShift/lambda-kit` still pins 2.6.x). `Package.swift`
-  pins it to the exact revision `5b2b025635a872345e7711177fe5b56a5ce81fad` (the current HEAD
-  of the fork's `support-runtime-3` branch) rather than tracking the branch, so a force-push
-  can't quietly change what builds. An app mounting Keel beside its own Lambdas must resolve
-  that same pin: depend on the same fork revision, or let SPM share Keel's resolution by not
-  declaring a competing `lambda-kit` requirement.
+  pins it to exact version `0.1.0`, so a force-push can't quietly change what builds. It is a
+  version rather than a revision because SwiftPM refuses to resolve a package requested by
+  version whose own dependencies are requested by revision — which would make Keel itself
+  impossible to depend on by tag. You do not need to declare `lambda-kit` at all: leave your
+  package silent on it and SPM uses Keel's pin.
 
 **The fork is temporary.** It carries no behaviour of its own to preserve — it only widens a
 version range. It goes away the moment upstream `lambda-kit` depends on
@@ -1563,6 +1563,20 @@ That is the same package URL the app target uses; the products differ. You do no
 `swift-aws-lambda-runtime`, `lambda-kit`, `soto-core` or `swift-log` yourself — they come
 with the server products at versions Keel has verified together, so your function cannot
 drift onto a runtime the framework has not been built against.
+
+**If your routes talk to DynamoDB or SSM themselves**, add `KeelSotoDynamoDB` /
+`KeelSotoSSM` rather than the upstream `soto` package:
+
+```swift
+.product(name: "KeelSotoDynamoDB", package: "KeelFramework"),   // getItem, putItem, query, updateItem
+.product(name: "KeelSotoSSM", package: "KeelFramework"),        // getParameter
+```
+
+These are Keel's own code-generated clients, carrying only the operations the framework and
+its adopters need. Using them keeps one AWS client in the function instead of two, which is
+the cold-start cost the code generation exists to avoid
+([adr/0006](adr/0006-codegen-soto.md)). If you need an operation they do not cover,
+regenerate them (`make soto`) rather than adding the full SDK alongside.
 
 Then the three steps:
 

@@ -18,10 +18,14 @@ The server needs an HTTP router over API Gateway events. The candidates:
 ## Decision
 
 Use `swift-aws-lambda-runtime` **3.0.0-rc1** and `sebsto/lambda-kit` fork
-(`github.com/sebsto/lambda-kit`, branch `support-runtime-3`), taking the `Routing` library
-only. `Package.swift` pins the dependency by **exact revision**
-`5b2b025635a872345e7711177fe5b56a5ce81fad` (the current HEAD of `support-runtime-3`)
-rather than by branch name, so a force-push cannot silently change what builds.
+(`github.com/sebsto/lambda-kit`), taking the `Routing` library only. `Package.swift` pins the
+dependency to the **exact version `0.1.0`**, which tags the Routing-only commit on the fork's
+`support-runtime-3` line, so a force-push cannot silently change what builds.
+
+The pin has to be a *version* rather than a revision, because SwiftPM refuses to resolve a
+package requested by version whose own dependencies are requested by revision or branch. Keel
+is consumed by tag (`from: "1.1.0"`), so every dependency it declares must be
+version-pinned too, or no app could depend on Keel at all.
 
 Two facts make the fork cheap rather than alarming: `Routing` does not itself depend on the
 Lambda runtime — the pin is transitive metadata, not code coupling — and the fork widens a
@@ -39,8 +43,8 @@ An app that mounts Keel beside its own Lambdas (via `builder.mount(keel:)`) shar
 SPM build graph and therefore **must resolve the same two pins**:
 
 - `swift-aws-lambda-runtime` on the **3.x major** (`3.0.0-rc1` today).
-- `lambda-kit` at the **exact revision `5b2b025635a872345e7711177fe5b56a5ce81fad`** — or
-  leave its `Package.swift` silent on `lambda-kit` and let SPM inherit Keel's pin.
+- `lambda-kit` at **exact version `0.1.0`** — or leave its `Package.swift` silent on
+  `lambda-kit` and let SPM inherit Keel's pin, which is the simpler path.
 
 A conflicting declaration causes SPM to reject the build. See
 [docs/INTEGRATION.md](../INTEGRATION.md) for the setup steps.

@@ -6,9 +6,9 @@ import KeelAppStoreRouter
 import KeelRouter
 import KeelServer
 import KeelServerDynamoDB
+import KeelSotoDynamoDB
 import Logging
 import Routing
-import SotoDynamoDB
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials

@@ -1,5 +1,5 @@
 public import KeelServer
-public import SotoDynamoDB
+public import KeelSotoDynamoDB
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
