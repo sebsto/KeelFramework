@@ -10,9 +10,9 @@ public import Foundation
 
 /// Signs and caches the ES256 bearer token for Apple's App Store Server API.
 ///
-/// Ported from odvpn's `VPNBilling.AppStoreServerJWT` — generic App Store Connect plumbing
-/// with nothing consumables- or credits-specific in it, so it lifts out cleanly. Apps that
-/// never *call* Apple's API (only receive its notifications) never link it.
+/// Generic App Store Connect plumbing with nothing consumables- or credits-specific in it, so it
+/// stays self-contained. Apps that never *call* Apple's API (only receive its notifications)
+/// never link it.
 ///
 /// Carries the App Store Server API's claim set: `aud` is `appstoreconnect-v1`, `bid` pins the
 /// token to one app's bundle, and `exp` is explicit — Apple rejects a token whose lifetime

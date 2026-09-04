@@ -3,10 +3,10 @@ import Testing
 
 @testable import KeelServer
 
-/// The keys asserted here are **the keys already in Orthanc's and odvpn's production tables**.
-/// They are not free to change: a rename means a retrofitted app loses its history, or worse,
-/// keeps writing to one partition while the stats page reads another. Treat a failure in this
-/// suite as a question about the change, not about the test.
+/// The keys asserted here are **byte-compatible with the format existing telemetry backends
+/// already store in production**. They are not free to change: a rename means a retrofitted app
+/// loses its history, or worse, keeps writing to one partition while the stats page reads
+/// another. Treat a failure in this suite as a question about the change, not about the test.
 @Suite("Counter schema")
 struct CounterSchemaTests {
 

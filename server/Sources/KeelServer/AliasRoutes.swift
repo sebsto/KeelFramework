@@ -1,7 +1,7 @@
 /// The `ALIAS_ROUTES` variable — extra paths for the canonical handlers, declared per deployment.
 ///
 /// This is the retrofit affordance (`docs/ARCHITECTURE.md` §3): a shipped client keeps calling
-/// the path it was built with while new builds move to `/v1/…`. Maxi80's `/station` is the
+/// the path it was built with while new builds move to `/v1/…`. A legacy `/station` path is the
 /// motivating case, including its envelope:
 ///
 /// ```
@@ -10,7 +10,8 @@
 ///
 /// Each entry is `path=target`, where the target is a canonical route name (`bootstrap`, `ping`,
 /// `stats`) with an optional `.flattened` suffix on `bootstrap` — the envelope that hoists the
-/// `app` payload's keys to the top level, which is exactly the old `/station` shape.
+/// `app` payload's keys to the top level, which is the flattened `/station` shape a legacy
+/// client expects.
 ///
 /// Deployment configuration rather than remote config, deliberately: the route table is built
 /// once at cold start, and a route that appears and disappears with a cache TTL would be a
@@ -29,9 +30,9 @@ public struct AliasRoutes: Sendable, Equatable {
         /// The canonical shape, byte-identical to the `/v1/…` route.
         case standard
 
-        /// The `app` payload's keys hoisted to the top level beside `features` — Maxi80's
-        /// legacy `/station` shape. Only meaningful on `bootstrap`, the one route with an
-        /// `app` payload.
+        /// The `app` payload's keys hoisted to the top level beside `features` — the flattened
+        /// `/station` shape a legacy client expects. Only meaningful on `bootstrap`, the one
+        /// route with an `app` payload.
         case flattened
     }
 

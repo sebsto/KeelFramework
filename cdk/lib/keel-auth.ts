@@ -48,20 +48,20 @@ export interface KeelSharedSecretOptions {
  * value, so treat it as a tripwire against casual abuse, not a security boundary.
  */
 export class KeelAuth {
-  /** No authorizer anywhere. Everything is public by design (Orthanc's model). */
+  /** No authorizer anywhere. Everything is public by design. */
   static none(): KeelAuth {
     return new KeelAuth("none");
   }
 
   /**
    * A Lambda authorizer comparing the `Authorization` header against an SSM parameter,
-   * in constant time. Casual abuse resistance without accounts (Maxi80's model).
+   * in constant time. Casual abuse resistance without user accounts.
    */
   static sharedSecret(options: KeelSharedSecretOptions): KeelAuth {
     return new KeelAuth("sharedSecret", options);
   }
 
-  /** SigV4 via `AWS_IAM` — for apps whose users already hold AWS credentials (odvpn). */
+  /** SigV4 via `AWS_IAM` — for apps whose users already hold AWS credentials. */
   static iam(): KeelAuth {
     return new KeelAuth("iam");
   }

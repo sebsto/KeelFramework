@@ -4,11 +4,12 @@
 // `KeelServerTesting` (an adopter uses these in its own tests; in production it swaps in
 // `KeelServerDynamoDB`), and `KeelRouter` + `builder.mount(keel:)` from `KeelRouter`.
 //
-// It imports NONE of the `KeelLambda` executable target — that is the whole point. The old
-// docs pointed adopters at `KeelLambda.makeRouterBuilder`, which is `internal` to an
-// executable and cannot be imported. If a future change strands the seam that way again —
-// by making `KeelRouter`'s init or `mount(keel:)` non-public, or moving a handler out of a
-// library — this file stops compiling, which is a louder failure than a stale doc.
+// It imports NONE of the `KeelLambda` executable target, by design: an executable target's
+// symbols (such as a `makeRouterBuilder` helper) are `internal` and cannot be imported by an
+// adopter, so the seam an adopter actually builds against must live in a library. If a future
+// change strands the seam that way — by making `KeelRouter`'s init or `mount(keel:)` non-public,
+// or moving a handler out of a library — this file stops compiling, which is a louder failure
+// than a stale doc.
 import AWSLambdaEvents
 import Foundation
 import HTTPTypes

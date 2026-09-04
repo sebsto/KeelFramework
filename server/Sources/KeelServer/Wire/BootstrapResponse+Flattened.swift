@@ -8,9 +8,9 @@ extension BootstrapResponse {
     /// This response with the `app` payload's keys hoisted to the top level — the legacy
     /// envelope an alias route can opt into (`AliasRoutes.Envelope.flattened`).
     ///
-    /// Maxi80's `/station` returns station fields *beside* `features`, not under an `app` key,
-    /// and shipped clients decode that shape. Flattening at the edge lets those clients keep
-    /// working against a Keel backend while the stored config stays canonical.
+    /// A legacy `/station`-style client returns station fields *beside* `features`, not under an
+    /// `app` key, and such shipped clients decode that shape. Flattening at the edge lets those
+    /// clients keep working against a Keel backend while the stored config stays canonical.
     ///
     /// Implemented as encode-then-merge rather than by rebuilding the object field by field, so
     /// the canonical `encode(to:)` — with its omission rules and date formatting — stays the

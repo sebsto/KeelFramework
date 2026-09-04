@@ -98,7 +98,7 @@ struct RouterSeamTests {
     func multipleAppRoutesCoexist() async throws {
         let builder = HTTPRouterBuilder()
         builder.mount(keel: Self.makeKeelRouter())
-        // Three app routes representative of the Orthanc stripe integration pattern
+        // Three app routes representative of a typical payment integration
         builder.get("/artwork") { _, _ in
             RouteResponse.json(["route": "artwork"], statusCode: .ok)
         }

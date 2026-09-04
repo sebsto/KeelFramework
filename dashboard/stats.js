@@ -4,9 +4,7 @@
 // from a CDN. Every color comes from tokens.css via getComputedStyle, so
 // rebranding and dark mode never touch this file.
 //
-// Merged from Orthanc's stats.js and odvpn's usage.js, which were
-// near-duplicates; where they differed, each one's better half is kept and
-// the trial cohort — which neither had — is added as a third lane.
+// Three cohort lanes: free, paid, and trial.
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -51,7 +49,7 @@ function animateCount(node, target) {
 }
 
 // Local development: `?api=https://…` points the page at a deployed backend
-// (odvpn's affordance, kept — it is how you check a stack before DNS exists).
+// (a way to check a stack before DNS exists).
 const API_BASE = (() => {
   const override = new URLSearchParams(window.location.search).get("api");
   return override ? override.replace(/\/$/, "") : "";

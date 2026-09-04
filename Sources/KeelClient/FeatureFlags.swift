@@ -33,8 +33,7 @@ extension KeelFlag {
     }
 }
 
-/// The observable flag store, typed by the app's own `KeelFlag` enum (Maxi80's design,
-/// generalised).
+/// The observable flag store, typed by the app's own `KeelFlag` enum.
 ///
 /// Reads are fail-open by construction: the subscript takes a *case*, so a typo is a
 /// compile error rather than a silently-false string, and an absent override reads the

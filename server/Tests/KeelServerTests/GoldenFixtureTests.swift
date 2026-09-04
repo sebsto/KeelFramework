@@ -164,9 +164,9 @@ struct GoldenFixtureTests {
         let data = Data(
             #"{"appVersion":"1.0","osVersion":"26.1","platform":"ios","licenseState":"full"}"#
                 .utf8)
-        // Note "full": Orthanc's existing wire value. Its retrofit has to map it, which is
-        // exactly the kind of thing a closed enum surfaces at the boundary instead of writing
-        // a second, parallel set of cohort partitions.
+        // Note "full": a legacy wire value some retrofitted apps still send. Its retrofit has to
+        // map it, which is exactly the kind of thing a closed enum surfaces at the boundary
+        // instead of writing a second, parallel set of cohort partitions.
         #expect(throws: DecodingError.self) {
             try WireJSON.decoder().decode(PingRequest.self, from: data)
         }

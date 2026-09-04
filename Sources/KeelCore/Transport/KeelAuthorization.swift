@@ -1,7 +1,7 @@
 /// How requests to the backend are authorized — the client's half of the CDK's `KeelAuth`.
 ///
 /// `iam` mode has no case here: SigV4 signing needs a credentials provider and belongs to
-/// the app's own transport (odvpn signs with Cognito credentials in a custom
+/// the app's own transport (an app whose users hold AWS credentials signs in a custom
 /// `HTTPTransport`), not to a framework that ships no AWS dependency.
 public enum KeelAuthorization: Sendable {
     /// No header. For `KeelAuth.none()` backends and for public routes.

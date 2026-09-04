@@ -28,8 +28,9 @@ public enum Platform: String, Codable, Sendable, CaseIterable, Equatable {
 /// `trial` exists separately from `free` because an app with a time-limited trial needs to
 /// tell "has not paid" from "is evaluating"; an app without one simply never sends it.
 ///
-/// Orthanc's existing data uses `full` where this says `paid`. Its retrofit keeps the old
-/// partitions readable rather than migrating them; see `docs/RETROFIT.md`.
+/// An app retrofitted onto Keel may have existing data that uses `full` where this says `paid`.
+/// Its retrofit maps the old value at the boundary and keeps the old partitions readable rather
+/// than migrating them; see `docs/RETROFIT.md`.
 public enum LicenseState: String, Codable, Sendable, CaseIterable, Equatable {
     case free
     case trial

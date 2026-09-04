@@ -24,7 +24,7 @@ public import Foundation
 public struct RemoteConfig: Codable, Sendable, Equatable {
     /// Flag overrides, sent to every client that asks. Names are opaque `lower_snake_case`
     /// strings: the server keeps no list of known flags, so a flag can be configured before or
-    /// after the build that reads it ships (Maxi80's rule, kept).
+    /// after the build that reads it ships.
     ///
     /// There is no per-platform or per-version narrowing here. Flags that need it are two flags,
     /// or one flag plus a check the client already has to make; see §10.
@@ -162,7 +162,8 @@ public struct TelemetrySettings: Codable, Sendable, Equatable {
 /// of that agreement: the labels it will accept, and the order a chart should draw them in.
 public struct DimensionConfig: Codable, Sendable, Equatable {
     /// Becomes part of a partition key, so keep it short and stable. Renaming it starts a new
-    /// distribution rather than renaming the old one — the history stays under the old partition.
+    /// distribution rather than renaming the existing one — data already written stays under the
+    /// previous name's partition.
     public var name: String
 
     /// The allowlist *and* the display order — `["1-2", "3-5", "6-10", "11+"]`.

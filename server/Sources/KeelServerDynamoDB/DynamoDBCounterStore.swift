@@ -4,9 +4,8 @@ public import SotoDynamoDB
 /// `CounterStore` on the single Keel table.
 ///
 /// Expression-based `UpdateItem` rather than any Codable mapping layer, because such layers have
-/// no `ADD` action — and `ADD` is the whole point: it is what lets any number of devices
-/// increment one row with no read, no conditional write, and no per-device state
-/// (`docs/ARCHITECTURE.md` §4).
+/// no `ADD` action. `ADD` is what lets any number of devices increment one row with no read, no
+/// conditional write, and no per-device state (`docs/ARCHITECTURE.md` §4).
 public struct DynamoDBCounterStore: CounterStore {
     let dynamoDB: DynamoDB
     let tableName: String

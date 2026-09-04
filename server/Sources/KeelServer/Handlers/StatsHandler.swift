@@ -126,9 +126,9 @@ public struct StatsHandler: Sendable {
 
     /// One partition per license state, read concurrently, as `[state: [stamp: count]]`.
     ///
-    /// Driven by `LicenseState.allCases` rather than three hardcoded queries. That is not
-    /// stylistic: `trial` was added to this framework after the cohorts were first written, and
-    /// every hand-listed site had to be found. A new state now reaches the response by construction.
+    /// Driven by `LicenseState.allCases` rather than one query per state. That is deliberate:
+    /// adding a new license state would otherwise mean finding and updating every hand-listed
+    /// query site. Driving off `allCases` means a new state reaches the response by construction.
     private func cohorts(
         from sortKeyFrom: String,
         partition: @Sendable (LicenseState) -> String

@@ -48,9 +48,6 @@ public struct VerifiedTransaction: Sendable, Equatable {
 /// `header.payload` before one byte of the payload is believed. Bundle and product
 /// checks come *after* the cryptography — they are claims from the payload, and reading
 /// them earlier would mean branching on attacker-controlled data.
-///
-/// odvpn's implementation, kept nearly verbatim (`docs/ARCHITECTURE.md` §12: it is the
-/// piece of that codebase most worth not rewriting).
 public struct AppStoreJWSVerifier: Sendable {
     private let expectedBundleId: String
     private let knownProductIds: Set<String>

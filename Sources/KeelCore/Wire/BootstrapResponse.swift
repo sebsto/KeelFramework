@@ -8,8 +8,8 @@ public import Foundation
 /// should be able to change without an App Store release.
 ///
 /// Generic over `App`, the opaque app-specific payload. An app with nothing extra to fetch
-/// uses `BootstrapResponse<Empty>`; Maxi80's station metadata, odvpn's region list, and
-/// anything else ride in `app` and are decoded by the app's own type.
+/// uses `BootstrapResponse<Empty>`; anything app-specific (a station list, a region list,
+/// whatever) rides in `app` and is decoded by the app's own type.
 ///
 /// **Every field except `schemaVersion` and `generatedAt` is optional or defaulted.** A
 /// response missing a section means "no opinion", never "empty" — so a server that has not

@@ -29,8 +29,8 @@ export interface KeelAliasRoute {
   /** The canonical route this alias serves. */
   readonly route: "/v1/bootstrap" | "/v1/ping" | "/v1/stats";
   /**
-   * `flattened` hoists the `app` payload's keys to the top level — Maxi80's legacy
-   * `/station` shape. Only valid on `/v1/bootstrap`.
+   * `flattened` hoists the `app` payload's keys to the top level — the legacy `/station`
+   * shape. Only valid on `/v1/bootstrap`.
    */
   readonly envelope?: "standard" | "flattened";
 }
@@ -243,7 +243,7 @@ export class KeelBackend extends Construct {
     } else {
       // No fixed tableName: RETAIN plus a fixed name is the orphan-table trap — a stack
       // deletion or a replacing change leaves a table CloudFormation no longer tracks, and
-      // every later deploy fails with "already exists" (odvpn, the hard way). The name is
+      // every later deploy fails with "already exists". The name is
       // exported instead, and the function gets it through TABLE_NAME.
       this.table = new dynamodb.Table(this, "Table", {
         partitionKey: { name: KEEL_TABLE_KEYS.partitionKey, type: dynamodb.AttributeType.STRING },

@@ -16,7 +16,7 @@ struct FeatureFlagsOverrideTests {
         #expect(FeatureFlagsOverride.none.isEmpty)
     }
 
-    @Test("Maxi80's format parses, spaces and all")
+    @Test("The environment-variable format parses, spaces and all")
     func parsesMaxi80Format() {
         let override = FeatureFlagsOverride(
             environmentValue: "anniversary_cover=false, sleep_timer=1")

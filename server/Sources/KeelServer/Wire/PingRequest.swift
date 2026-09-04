@@ -97,7 +97,7 @@ public struct PingRequest: Decodable, Sendable, Equatable {
     ///
     /// These exist because the values are *keys*, not payload: an unbounded string means
     /// unbounded distinct sort keys, which means a table that grows without limit and a stats
-    /// response that grows with it. odvpn arrived at 20 bytes for versions the same way.
+    /// response that grows with it. 20 bytes is enough for any real version string.
     ///
     /// Enforced by `PingHandler` (Phase 2), which truncates nothing and rejects instead —
     /// truncation would silently merge `2.10.0` and `2.10.0-beta.1`.

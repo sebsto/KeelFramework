@@ -1,9 +1,9 @@
 /// Arbitrary JSON, carried through the server without being understood.
 ///
-/// The `app` section of the bootstrap response is the app's own business: Maxi80's station
-/// metadata, odvpn's region list, whatever the next app needs. The framework stores it, ages it
-/// in a cache, and hands it back byte-for-byte — it must never require a Swift type on this
-/// side, because that would make "add a field to my config" a framework release.
+/// The `app` section of the bootstrap response is the app's own business: a station list, a
+/// region list, whatever the app needs. The framework stores it, ages it in a cache, and hands
+/// it back byte-for-byte — it must never require a Swift type on this side, because that would
+/// make "add a field to my config" a framework release.
 ///
 /// Also what `keel config set` writes and what `ConfigStore` round-trips.
 ///

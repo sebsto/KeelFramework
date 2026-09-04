@@ -130,8 +130,8 @@ struct PingHandlerTests {
 
     @Test("OS, platform and dimension spreads are monthly, not daily")
     func spreadsAreMonthly() {
-        // odvpn increments the OS spread on `firstToday`, which makes its total a sum of daily
-        // actives — comparable to nothing else it publishes. Deduping monthly makes
+        // Incrementing the OS spread on `firstToday` would make its total a sum of daily
+        // actives — comparable to nothing else published. Deduping monthly makes
         // `sum(osVersions) ≈ mau`: one observation per install per month, the same census MAU takes.
         let daily = PingHandler.plan(
             for: Self.request(firstToday: true, dimensions: ["profiles": "3-5"]),
@@ -152,9 +152,9 @@ struct PingHandlerTests {
 
     @Test("An install that changed nothing this month is still censused for its version")
     func versionCensusIsMonthly() {
-        // The bug present in both Orthanc and odvpn: driving the version spread from
-        // `firstThisVersion` alone means `AGG#VER#2026-08` holds only the installs that *changed*
-        // version during August, and none of the ones that stayed put.
+        // Driving the version spread from `firstThisVersion` alone means `AGG#VER#2026-08` holds
+        // only the installs that *changed* version during August, and none of the ones that
+        // stayed put.
         let stayedPut = PingHandler.plan(
             for: Self.request(firstToday: true, firstThisMonth: true),
             at: Self.now,
