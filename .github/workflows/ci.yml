@@ -11,9 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Two jobs on macOS (Swift 6.2, Xcode 26), one on Linux (CDK):
-#   1. swift — build + test both packages, lint
-#   2. cdk — tsc + jest + lint for the CDK constructs
+# Jobs:
+#   1. swift        — macOS: build + test both packages, lint
+#   2. server-linux — Linux: build + test the server package (the Lambda target)
+#   3. cdk          — Linux: tsc + jest + lint for the CDK constructs
 #
 # The SampleApp template has no .xcodeproj by design (project files don't
 # survive templating). The template Swift files compile transitively through
@@ -65,6 +66,35 @@ jobs:
 
       - name: Lint Swift
         run: make lint-swift
+
+  # ── Swift server on Linux (the Lambda target) ────────────────────────────
+  # The server package ships as a PROVIDED_AL2023 arm64 Lambda, so it must build
+  # and test on Linux (swift-crypto / swift-corelibs-foundation), not only on the
+  # macOS runner above. The client package is Apple/Skip code and stays macOS-only;
+  # keel-cli lives in the server package and gets Linux compile coverage through
+  # `swift test --package-path server`.
+  server-linux:
+    name: Swift server — Linux build + test
+    runs-on: ubuntu-latest
+    container: swift:6.2-jammy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Cache server SPM
+        uses: actions/cache@v4
+        with:
+          path: server/.build
+          key: spm-server-linux-${{ hashFiles('server/Package.resolved') }}
+          restore-keys: spm-server-linux-
+
+      - name: Build server
+        run: swift build --package-path server
+
+      - name: Test server
+        run: swift test --package-path server
 
   # ── CDK constructs (TypeScript) ──────────────────────────────────────────
   cdk:
