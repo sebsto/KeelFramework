@@ -6,9 +6,9 @@ import KeelAppStoreRouter
 import KeelRouter
 import KeelServer
 import KeelServerDynamoDB
-import KeelSotoDynamoDB
 import Logging
 import Routing
+import SotoCore
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -182,10 +182,10 @@ struct KeelLambda: LambdaHandler {
     private static func dynamoDBStores(
         tableName: String
     ) -> (any CounterStore, any ConfigStore) {
-        let dynamoDB = DynamoDB(client: AWSClient())
+        let awsClient = AWSClient()
         return (
-            DynamoDBCounterStore(dynamoDB: dynamoDB, tableName: tableName),
-            DynamoDBConfigStore(dynamoDB: dynamoDB, tableName: tableName)
+            DynamoDBCounterStore(awsClient: awsClient, tableName: tableName),
+            DynamoDBConfigStore(awsClient: awsClient, tableName: tableName)
         )
     }
 }

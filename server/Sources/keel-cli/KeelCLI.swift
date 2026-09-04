@@ -1,7 +1,7 @@
 import ArgumentParser
 import KeelServer
 import KeelServerDynamoDB
-import KeelSotoDynamoDB
+import SotoCore
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -53,11 +53,12 @@ struct TableOptions: ParsableArguments {
             } else if let env = ProcessInfo.processInfo.environment["AWS_REGION"]
                 ?? ProcessInfo.processInfo.environment["AWS_DEFAULT_REGION"]
             { Region(awsRegionName: env) } else { nil }
-        let dynamoDB = DynamoDB(client: client, region: resolvedRegion)
         do {
             let result = try await body(
-                DynamoDBCounterStore(dynamoDB: dynamoDB, tableName: table),
-                DynamoDBConfigStore(dynamoDB: dynamoDB, tableName: table))
+                DynamoDBCounterStore(
+                    awsClient: client, region: resolvedRegion, tableName: table),
+                DynamoDBConfigStore(
+                    awsClient: client, region: resolvedRegion, tableName: table))
             try await client.shutdown()
             return result
         } catch {

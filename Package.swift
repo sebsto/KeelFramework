@@ -258,6 +258,7 @@ let package = Package(
                 .product(name: "Routing", package: "lambda-kit"),
                 .product(name: "Configuration", package: "swift-configuration"),
                 .product(name: "Logging", package: "swift-log"),
+                .product(name: "SotoCore", package: "soto-core"),
             ],
             path: "server/Sources/KeelLambda",
             swiftSettings: strictSettings
@@ -333,6 +334,7 @@ let package = Package(
                 "KeelServer",
                 "KeelServerDynamoDB",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "SotoCore", package: "soto-core"),
             ],
             path: "server/Sources/keel-cli",
             swiftSettings: strictSettings

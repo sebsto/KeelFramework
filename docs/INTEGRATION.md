@@ -1595,10 +1595,10 @@ let builder = HTTPRouterBuilder()
 builder.mount(keel: keel)
 
 // 2. Add your own routes on the same builder
-builder.post("/v1/my-webhook") { request, _ in
+builder.on(Routing.HTTPRequest.post("/v1/my-webhook")) { request, _ in
     try await MyWebhookHandler().handle(request)
 }
-builder.get("/v1/my-thing") { request, _ in
+builder.on(Routing.HTTPRequest.get("/v1/my-thing")) { request, _ in
     try await MyThingHandler().handle(request)
 }
 
@@ -1694,9 +1694,9 @@ struct OrthancLambda: LambdaHandler {
         //    executable target and cannot be imported — reproduce it here against the
         //    KeelServer / KeelRouter / KeelServerDynamoDB libraries. `settings` is your app's
         //    own configuration type.)
-        let dynamoDB = DynamoDB(client: AWSClient())
-        let counters = DynamoDBCounterStore(dynamoDB: dynamoDB, tableName: settings.tableName)
-        let configs = DynamoDBConfigStore(dynamoDB: dynamoDB, tableName: settings.tableName)
+        let awsClient = AWSClient()
+        let counters = DynamoDBCounterStore(awsClient: awsClient, tableName: settings.tableName)
+        let configs = DynamoDBConfigStore(awsClient: awsClient, tableName: settings.tableName)
         let cache = ConfigCache(
             store: configs, ttl: Double(settings.configTTLSeconds), logger: logger)
         let keel = KeelRouter(
@@ -1714,25 +1714,27 @@ struct OrthancLambda: LambdaHandler {
         let builder = HTTPRouterBuilder()
         builder.mount(keel: keel)   // Keel's routes on the shared builder
 
-        // 2. Orthanc-specific dependencies (reuse the dynamoDB client from step 1)
-        let licenseStore = DynamoDBLicenseStore(dynamoDB: dynamoDB, tableName: settings.tableName)
+        // 2. Orthanc-specific dependencies. The app's own store uses the upstream soto
+        //    client it already depends on, sharing the one AWSClient from step 1.
+        let licenseStore = DynamoDBLicenseStore(
+            dynamoDB: SotoDynamoDB.DynamoDB(client: awsClient), tableName: settings.tableName)
 
         // 3. SSM secret for Stripe webhook signature verification
         //    (read at cold start, same pattern as KeelAuthorizerLambda)
         let stripeSecret = try await SSMClient().getParameter(name: settings.stripeWebhookSecretPath)
 
         // 4. Register app routes alongside Keel's
-        builder.post("/v1/checkout") { request, _ in
+        builder.on(Routing.HTTPRequest.post("/v1/checkout")) { request, _ in
             try await CheckoutHandler(store: licenseStore).handle(request)
         }
         // Stripe sends raw bytes; the signature header is verified against the body
-        builder.post("/v1/stripe-webhook") { request, _ in
+        builder.on(Routing.HTTPRequest.post("/v1/stripe-webhook")) { request, _ in
             try await StripeWebhookHandler(
                 store: licenseStore,
                 webhookSecret: stripeSecret
             ).handle(request)
         }
-        builder.get("/v1/license") { request, _ in
+        builder.on(Routing.HTTPRequest.get("/v1/license")) { request, _ in
             try await LicenseHandler(store: licenseStore).handle(request)
         }
 
