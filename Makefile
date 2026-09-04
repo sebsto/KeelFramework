@@ -19,15 +19,12 @@ help: ## List targets
 # MARK: - Build
 
 .PHONY: build
-build: build-client build-server build-cdk ## Build everything (host arch)
+build: build-swift build-cdk ## Build everything (host arch)
 
-.PHONY: build-client
-build-client: ## Build the client package
-	$(SWIFT) build --package-path .
-
-.PHONY: build-server
-build-server: ## Build the server package for the host
-	$(SWIFT) build --package-path $(SERVER_DIR)
+.PHONY: build-swift
+build-swift: ## Build the Swift package. On Linux the Apple-only client targets are
+	## omitted by Package.swift, so this is the Lambda half there.
+	$(SWIFT) build
 
 .PHONY: build-cdk
 build-cdk: $(CDK_DIR)/node_modules ## Compile the CDK construct library
@@ -35,7 +32,7 @@ build-cdk: $(CDK_DIR)/node_modules ## Compile the CDK construct library
 
 .PHONY: lambda
 lambda: ## Cross-compile + package the Lambda zips (container, arm64)
-	$(SWIFT) package --disable-sandbox --package-path $(SERVER_DIR) \
+	$(SWIFT) package --disable-sandbox \
 		--allow-network-connections docker \
 		lambda-build \
 		--cross-compile container \
@@ -46,15 +43,11 @@ lambda: ## Cross-compile + package the Lambda zips (container, arm64)
 # MARK: - Test
 
 .PHONY: test
-test: test-client test-server test-cdk ## Run every test suite
+test: test-swift test-cdk ## Run every test suite
 
-.PHONY: test-client
-test-client: ## swift test, client package
-	$(SWIFT) test --package-path .
-
-.PHONY: test-server
-test-server: ## swift test, server package
-	$(SWIFT) test --package-path $(SERVER_DIR)
+.PHONY: test-swift
+test-swift: ## swift test. Runs both suites on macOS; the server suite alone on Linux.
+	$(SWIFT) test
 
 .PHONY: test-cdk
 test-cdk: $(CDK_DIR)/node_modules ## jest, CDK assertions on the synthesized template
@@ -76,7 +69,7 @@ synth: $(CDK_DIR)/node_modules ## cdk synth the sample stack in every auth mode
 .PHONY: local
 local: ## Run KeelLambda locally with an in-memory store (POST events to :$(LOCAL_PORT)/invoke)
 	TABLE_NAME=local KEEL_MEMORY_STORE=true LOG_LEVEL=debug \
-		$(SWIFT) run --package-path $(SERVER_DIR) KeelLambda
+		$(SWIFT) run KeelLambda
 
 .PHONY: smoke
 smoke: ## Invoke bootstrap, ping, and stats against a running `make local`
@@ -129,4 +122,4 @@ soto: ## Regenerate the minimal DynamoDB client (see docs/adr/0006-codegen-soto.
 
 .PHONY: clean
 clean: ## Remove build products
-	rm -rf .build $(SERVER_DIR)/.build $(CDK_DIR)/cdk.out $(CDK_DIR)/lib/*.js $(CDK_DIR)/lib/*.d.ts
+	rm -rf .build $(CDK_DIR)/cdk.out $(CDK_DIR)/lib/*.js $(CDK_DIR)/lib/*.d.ts

@@ -59,7 +59,7 @@ Terminal B: the checks below. The local server takes API Gateway *event JSON* on
 | ✅ | ☐ | Ping validation | send `server/events/ping-bad.json` | 400, `"code":"validation_error"`, message names `appVersion` but never echoes the bad value |
 | ✅ | ☐ | Flattened alias | restart Terminal A with `ALIAS_ROUTES="/station=bootstrap.flattened"` in the env, send `server/events/station.json` | 200; top-level keys, no `app` key |
 | ✅ | ☐ | 404 fallback | edit a copy of bootstrap.json with `"proxy": "nope"` | 404 `{"error":"Not found"}` |
-| ✅ | ☐ | Missing TABLE_NAME fails loudly | `swift run --package-path server KeelLambda` with no env | process exits with `missingTableName`, never serves |
+| ✅ | ☐ | Missing TABLE_NAME fails loudly | `swift run KeelLambda` with no env | process exits with `missingTableName`, never serves |
 
 Notes:
 
@@ -120,7 +120,7 @@ with no deploy**.
 ```sh
 export TABLE_NAME=<TableName>
 export AWS_REGION=eu-central-1
-swift run --package-path server keel config get --table $TABLE_NAME
+swift run keel config get --table $TABLE_NAME
 ```
 
 | W | F | Check | How | Expected |
