@@ -1730,9 +1730,10 @@ backend.table.grant(backend.lambdaFunction, "dynamodb:PutItem");
 ```
 
 **Route registration on API Gateway.** Keel's CDK registers only the Keel routes
-(`/v1/bootstrap`, `/v1/ping`, `/v1/stats`, plus any aliases) on the HTTP API. You need
-to add your own routes in CDK. The simplest way is to extend the `KeelBackend` construct
-after the fact:
+(`/v1/bootstrap`, `/v1/ping`, `/v1/stats`, plus any aliases) on the HTTP API. Declare your
+own routes with the `appRoutes` prop — it registers each route **and**, when `allowedOrigins`
+is set, its `OPTIONS` preflight, so a browser making a non-simple cross-origin request (a JSON
+`POST`, or any request with a custom header) clears preflight instead of 404ing at the gateway:
 
 ```ts
 const backend = new KeelBackend(this, "Backend", {
@@ -1740,31 +1741,25 @@ const backend = new KeelBackend(this, "Backend", {
     envName: props.envName,
     auth: KeelAuth.sharedSecret({ parameterName: "/keel/orthanc/prod/api-secret" }),
     lambdaAssetPath: "path/to/OrthancLambda.zip",
-});
-
-// Add the Orthanc routes to the same HTTP API
-backend.httpApi.addRoutes({
-    path: "/v1/checkout",
-    methods: [apigwv2.HttpMethod.POST],
-    integration: new apigwv2_integrations.HttpLambdaIntegration(
-        "CheckoutIntegration", backend.lambdaFunction),
-    authorizer: backend.authorizer,   // carries the shared-secret authorizer, if configured
-});
-backend.httpApi.addRoutes({
-    path: "/v1/stripe-webhook",
-    methods: [apigwv2.HttpMethod.POST],
-    integration: new apigwv2_integrations.HttpLambdaIntegration(
-        "WebhookIntegration", backend.lambdaFunction),
-    // Stripe webhooks are always public — no Keel authorizer
-});
-backend.httpApi.addRoutes({
-    path: "/v1/license",
-    methods: [apigwv2.HttpMethod.GET],
-    integration: new apigwv2_integrations.HttpLambdaIntegration(
-        "LicenseIntegration", backend.lambdaFunction),
-    authorizer: backend.authorizer,
+    allowedOrigins: ["https://stormacq.net", "https://www.stormacq.net"],
+    appRoutes: [
+        { path: "/v1/checkout", method: "POST" },                 // configured authorizer
+        { path: "/v1/stripe-webhook", method: "POST", public: true }, // Stripe calls it unauthenticated
+        { path: "/v1/license", method: "GET" },
+    ],
 });
 ```
+
+Each route's integration is `backend.lambdaFunction` — the same executable that mounts Keel's
+routes and your own. A route defaults to the configured authorizer; set `public: true` for one
+a third party calls without your credentials (a payment webhook). A declared path that collides
+with a Keel route fails `cdk synth`.
+
+A **simple** GET (a bare `fetch`, no custom headers) needs no preflight and works without an
+`OPTIONS` route; a **non-simple** request (JSON `POST`, custom header) needs the preflight,
+which `appRoutes` + `allowedOrigins` register for you. If you register routes by hand with
+`backend.httpApi.addRoutes(...)` instead, remember to add the matching `OPTIONS` route yourself
+(always public — the browser sends it without credentials).
 
 ---
 

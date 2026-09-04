@@ -554,3 +554,71 @@ describe("KeelBackend CORS", () => {
     });
   });
 });
+
+
+describe("KeelBackend appRoutes", () => {
+  test("an app route is registered on the API with the configured authorizer by default", () => {
+    const { template } = synth({
+      auth: KeelAuth.iam(),
+      appRoutes: [{ path: "/v1/checkout", method: "POST" }],
+    });
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    const byKey = Object.fromEntries(routes.map((r) => [r.Properties.RouteKey, r.Properties]));
+    expect(byKey["POST /v1/checkout"]).toBeDefined();
+    expect(byKey["POST /v1/checkout"].AuthorizationType).toBe("AWS_IAM");
+  });
+
+  test("a public app route takes no authorizer", () => {
+    const { template } = synth({
+      auth: KeelAuth.iam(),
+      appRoutes: [{ path: "/v1/stripe-webhook", method: "POST", public: true }],
+    });
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    const byKey = Object.fromEntries(routes.map((r) => [r.Properties.RouteKey, r.Properties]));
+    expect(byKey["POST /v1/stripe-webhook"].AuthorizationType ?? "NONE").toBe("NONE");
+  });
+
+  test("an app route gets its OPTIONS preflight when allowedOrigins is set", () => {
+    const { template } = synth({
+      allowedOrigins: ["https://example.com"],
+      appRoutes: [
+        { path: "/v1/checkout", method: "POST" },
+        { path: "/v1/license", method: "GET" },
+      ],
+    });
+    for (const path of ["/v1/checkout", "/v1/license"]) {
+      template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+        RouteKey: `OPTIONS ${path}`,
+      });
+    }
+  });
+
+  test("no OPTIONS route for app routes when allowedOrigins is unset", () => {
+    const { template } = synth({
+      appRoutes: [{ path: "/v1/checkout", method: "POST" }],
+    });
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    expect(routes.some((r) => String(r.Properties.RouteKey).startsWith("OPTIONS"))).toBe(false);
+  });
+
+  test("an app route colliding with a core route fails synth", () => {
+    expect(() =>
+      synth({ appRoutes: [{ path: "/v1/ping", method: "POST" }] }),
+    ).toThrow(/collides with a Keel-owned route/);
+  });
+
+  test("an app route colliding with an alias path fails synth", () => {
+    expect(() =>
+      synth({
+        aliasRoutes: { "/station": { route: "/v1/bootstrap", envelope: "flattened" } },
+        appRoutes: [{ path: "/station", method: "GET" }],
+      }),
+    ).toThrow(/collides with a Keel-owned route/);
+  });
+
+  test("no app routes and no prop leaves the API unchanged", () => {
+    const { template } = synth();
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    expect(routes.some((r) => String(r.Properties.RouteKey).includes("checkout"))).toBe(false);
+  });
+});
