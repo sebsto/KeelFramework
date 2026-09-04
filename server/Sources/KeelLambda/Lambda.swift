@@ -229,8 +229,8 @@ struct Settings {
 
     init(config: ConfigReader = ConfigReader(provider: EnvironmentVariablesProvider())) throws {
         // Missing on purpose has no meaning here, so it fails at init and the function never
-        // comes up — a silent default pointing at a table that does not exist is odvpn's
-        // orphan-table trap, and it surfaces as "the stats are all zero" weeks later.
+        // comes up. A silent default pointing at a table that does not exist is the classic
+        // orphan-table trap: it surfaces as "the stats are all zero" weeks later.
         guard let tableName = config.string(forKey: "tableName"), !tableName.isEmpty else {
             throw SettingsError.missingTableName
         }

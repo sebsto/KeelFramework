@@ -9,7 +9,7 @@
 /// FEATURE_FLAGS="anniversary_cover=false, sleep_timer=1"
 /// ```
 ///
-/// Maxi80's parser, kept close to verbatim including the properties that matter:
+/// The parser keeps the properties that matter:
 ///
 /// - **Names are passed through.** The server keeps no list of known flags, so a flag can be set
 ///   before or after the build that reads it ships.
@@ -19,7 +19,7 @@
 /// - **What was dropped is reported.** `malformedEntries` exists so the caller logs it, because a
 ///   silently ignored flag is indistinguishable from one that is working.
 ///
-/// It wins over the table, which is the whole point: a value set here cannot be undone by whatever
+/// It wins over the table by design: a value set here cannot be undone by whatever
 /// the config item says. Removing the variable is how you give control back.
 public struct FeatureFlagsOverride: Sendable, Equatable {
     /// The variable the Lambda reads. The CDK construct sets it only when asked to.

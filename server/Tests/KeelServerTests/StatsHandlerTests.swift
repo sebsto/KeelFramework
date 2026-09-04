@@ -162,8 +162,8 @@ struct StatsHandlerTests {
         let store = InMemoryCounterStore()
         _ = try await Self.handler(store: store).handle()
 
-        // `trial` was added after the cohorts were first written and every hand-listed site had to
-        // be found. Driving the fan-out from `allCases` is what stops that recurring.
+        // Adding a license state should not require finding and updating every hand-listed query
+        // site. Driving the fan-out from `allCases` is what stops that from being missed.
         for state in LicenseState.allCases {
             #expect(store.queries.contains { $0.partitionKey == "AGG#DAU#\(state.rawValue)" })
             #expect(store.queries.contains { $0.partitionKey == "AGG#MAU#\(state.rawValue)" })

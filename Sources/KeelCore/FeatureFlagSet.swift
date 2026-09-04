@@ -1,7 +1,7 @@
 /// The resolved feature flags: compiled-in defaults with the server's overrides on top.
 ///
 /// A value type, and the *portable* half of the flag mechanism — `KeelClient.FeatureFlags`
-/// wraps one of these in `@Observable` for SwiftUI. The lookup rule is Maxi80's, kept:
+/// wraps one of these in `@Observable` for SwiftUI. The lookup rules are:
 ///
 /// - **Fail-open on the default.** A flag the server never mentioned reads as its
 ///   compiled-in default, so a fresh backend changes nothing.

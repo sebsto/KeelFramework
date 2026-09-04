@@ -4,11 +4,9 @@ public import KeelCore
 /// The launch ping, end to end: guards, dedup, send, persist — in that order, and the
 /// order is most of the design.
 ///
-/// Orthanc's `LaunchCoordinator` and odvpn's `StatsClient` merged, keeping each one's
-/// correct half. Dedup state persists only *after* the send returns (Orthanc's rule —
-/// odvpn persists first and silently drops a day on failure), and the paid ratchet latches
-/// only on an *accepted* ping (also Orthanc — a conversion is once per install, so a
-/// dropped one must re-offer itself next launch).
+/// Dedup state persists only *after* the send returns (persisting first would silently drop a
+/// day on a failed send), and the paid ratchet latches only on an *accepted* ping (a conversion
+/// is counted once per install, so a dropped ping must re-offer itself next launch).
 ///
 /// Call `run(licenseState:)` from a launch `.task`, after — or racing — the bootstrap
 /// fetch; it reads the telemetry section it is handed, which is the *cached* config, so
@@ -34,7 +32,7 @@ public struct TelemetryService: Sendable {
         self.client = configuration.client
     }
 
-    /// Whether the user has telemetry on. Reads the tri-state key honestly.
+    /// Whether the user has telemetry on. Defaults to on when the key has never been set.
     public var isUserEnabled: Bool {
         configuration.defaults.bool(forKey: Key.isEnabled) ?? true
     }

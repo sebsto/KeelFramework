@@ -15,7 +15,7 @@ struct AliasRoutesTests {
         #expect(AliasRoutes(environmentValue: nil).isEmpty)
     }
 
-    @Test("Maxi80's declaration parses to its two aliases")
+    @Test("A two-alias declaration parses to its two aliases")
     func parsesTheMotivatingCase() {
         let routes = AliasRoutes(environmentValue: "/station=bootstrap.flattened, /usage=stats")
         #expect(

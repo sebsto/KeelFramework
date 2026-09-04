@@ -37,8 +37,7 @@ public struct CounterWrite: Sendable, Equatable, Hashable {
 ///
 /// Named `CounterStore` rather than `DeviceStore` or `UsageStore` on purpose: aggregate counters
 /// are the *only* thing this table holds, and a name implying per-device rows would keep the
-/// reader looking for them (`docs/ARCHITECTURE.md` §9). Orthanc uses the same name for the same
-/// reason.
+/// reader looking for them (`docs/ARCHITECTURE.md` §9).
 ///
 /// Two operations, both of which map to exactly one DynamoDB call. There is no `get`, no `put`,
 /// and no `delete`, because the counters are write-only-by-increment and read-only-by-window —

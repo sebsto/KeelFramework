@@ -8,7 +8,7 @@ import X509
 
 /// A minimal self-signed root → leaf PKI plus JWS builders, so verification is tested
 /// against an *injected* pinned root — the design that makes it testable — rather than
-/// Apple's live PKI. Adapted from odvpn's `JWSTestPKI`.
+/// Apple's live PKI.
 enum TestPKI {
     static let start = Date(timeIntervalSince1970: 1_700_000_000)
 

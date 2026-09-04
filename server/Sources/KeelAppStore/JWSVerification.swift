@@ -28,8 +28,7 @@ public enum JWSVerificationError: Error, Sendable, Equatable {
 /// The shared JWS mechanics: x5c chain validation against a pinned root, then ES256 over
 /// `header.payload`, and only then are the payload bytes handed back to be believed.
 ///
-/// Lifted from odvpn's `AppStoreJWSVerifier` (its production-proven half) and shared
-/// between the two verifier types instead of being duplicated into both. The pinned root
+/// Shared between the two verifier types instead of being duplicated into both. The pinned root
 /// is injectable so tests verify against their own self-signed PKI instead of Apple's —
 /// which is what makes chain validation unit-testable at all.
 struct JWSCore: Sendable {

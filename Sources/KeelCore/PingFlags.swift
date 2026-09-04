@@ -7,10 +7,9 @@ public import Foundation
 /// The five deduplication booleans, computed from what the device remembers.
 ///
 /// This is the whole privacy mechanism in one pure function (`docs/adr/0004`): the server
-/// keeps no per-device state, so *the device* decides whether this launch is a first — and
-/// the two existing implementations of that decision disagreed in the details. Orthanc and
-/// odvpn each hand-rolled it; this is the reconciled version, and being pure is the point:
-/// every calendar edge is a table-driven test with an injected clock.
+/// keeps no per-device state, so *the device* decides whether this launch is a first. Keeping
+/// the decision pure is deliberate — every calendar edge is covered by a table-driven test with
+/// an injected clock.
 ///
 /// All comparisons are UTC civil dates, matching the server's counter stamps. A user flying
 /// through timezones pings once per *UTC* day, the same day the counter is filed under.

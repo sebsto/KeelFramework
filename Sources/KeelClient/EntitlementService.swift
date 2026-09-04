@@ -93,7 +93,7 @@ public final class EntitlementService {
     public private(set) var licenseState: LicenseState = .free
 
     /// The newest relevant JWS, for apps that forward a transaction to their own backend
-    /// (Keel verifies App Store paperwork via `KeelAppStore` but no longer offers a
+    /// (Keel verifies App Store paperwork via `KeelAppStore` but does not itself have a
     /// purchase-reporting route — what a purchase grants is the app's own concern). Nil for
     /// free users.
     public private(set) var latestTransactionJWS: String?

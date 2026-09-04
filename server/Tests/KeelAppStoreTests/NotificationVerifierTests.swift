@@ -37,7 +37,7 @@ struct NotificationVerifierTests {
     func unknownTypeIsAValue() async throws {
         let payload = try await verifier().verify(
             TestPKI.notificationJWS(type: "SOME_FUTURE_TYPE"))
-        // The whole point of the open enum: Apple can add a type and it arrives verbatim.
+        // The open enum lets Apple add a type and have it arrive verbatim rather than fail to decode.
         #expect(payload.notificationType == AppStoreNotificationType(rawValue: "SOME_FUTURE_TYPE"))
         #expect(payload.notificationType != .refund)
     }

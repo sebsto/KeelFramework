@@ -54,8 +54,8 @@ struct JWSVerifierTests {
             knownProductIds: ["unlock_pro"],
             pinnedRoots: [TestPKI.strangerRoot],
             validationTime: TestPKI.start)
-        // The whole point of pinning: a valid chain to the *wrong* trust anchor fails
-        // identically to a forged one.
+        // Pinning means a valid chain to the *wrong* trust anchor fails identically to a
+        // forged one.
         await #expect(throws: JWSVerificationError.untrustedCertificateChain) {
             _ = try await stranger.verify(TestPKI.transactionJWS())
         }

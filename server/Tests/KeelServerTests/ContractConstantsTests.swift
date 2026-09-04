@@ -23,8 +23,8 @@ struct ContractConstantsTests {
     }
 
     /// Renaming any of these orphans every existing item — the table is byte-compatible with
-    /// what Orthanc and odvpn already store, which is what makes a retrofit need no data
-    /// migration.
+    /// the format an existing telemetry backend already stores, which is what makes a retrofit
+    /// need no data migration.
     @Test func tableAttributeNamesMatchTheDeployedSchema() {
         #expect(Keel.Attribute.partitionKey == "pk")
         #expect(Keel.Attribute.sortKey == "sk")

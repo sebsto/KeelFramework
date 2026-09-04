@@ -144,13 +144,13 @@ public struct PingHandler: Sendable {
     /// | `firstThisMonth` | `AGG#MAU`, `AGG#MAU#<state>`, `AGG#OS#<month>`, `AGG#PLAT#<month>`, `AGG#VER#<month>`, one `AGG#DIM#<name>#<month>` per accepted dimension |
     /// | `firstThisVersion` | `AGG#VER#<month>` |
     ///
-    /// **OS, platform and dimensions are monthly, not daily.** odvpn increments the OS spread on
-    /// `firstToday`, which makes its total a sum of daily actives — comparable to nothing else it
-    /// publishes. Deduping them monthly, as Orthanc does, makes `sum(osVersions) ≈ mau`: one
-    /// observation per install per month, the same census the MAU counter takes.
+    /// **OS, platform and dimensions are monthly, not daily.** Incrementing the OS spread on
+    /// `firstToday` would make its total a sum of daily actives — comparable to nothing else
+    /// published. Deduping them monthly makes `sum(osVersions) ≈ mau`: one observation per install
+    /// per month, the same census the MAU counter takes.
     ///
     /// **The version spread is both monthly and on upgrade.** Driving it from `firstThisVersion`
-    /// alone (Orthanc, odvpn) is subtly broken: that boolean fires once per install per *version
+    /// alone is subtly broken: that boolean fires once per install per *version
     /// ever*, so `AGG#VER#2026-09` would contain only the installs that changed version during
     /// September and none of the ones that stayed put. Adding the monthly census fixes it. An
     /// install that upgrades mid-month is then counted under both versions for that month, so

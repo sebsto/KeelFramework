@@ -25,7 +25,7 @@ public struct StatsResponse: Encodable, Sendable, Equatable {
     ///
     /// The ratio is not published. `conversions / installs` has an over-counted denominator, and
     /// emitting the quotient would dress that up as a precise number; two honest counts side by
-    /// side let the reader apply their own scepticism. Orthanc made the same call.
+    /// side let the reader apply their own scepticism.
     public var conversions: Int
 
     /// Oldest first, zero-filled across the whole window. The zero-fill happens here rather than

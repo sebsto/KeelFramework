@@ -4,7 +4,7 @@ import Testing
 
 @testable import KeelServer
 
-/// The legacy envelope behind `envelope: flattened` — Maxi80's `/station` shape, where the app
+/// The legacy envelope behind `envelope: flattened` — the `/station` shape, where the app
 /// payload's keys sit beside `features` instead of under `app`.
 @Suite("Flattened bootstrap envelope")
 struct FlattenedBootstrapTests {

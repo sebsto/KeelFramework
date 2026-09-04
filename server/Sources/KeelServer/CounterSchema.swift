@@ -11,11 +11,11 @@ public import Foundation
 /// name, so the table's shape can be reasoned about by reading one file and a rename is a
 /// compile error rather than a silently orphaned partition.
 ///
-/// **The key strings are byte-compatible with what Orthanc and odvpn already store.** That is
-/// deliberate and constrains the naming: `AGG#DAU`, `AGG#VER#2026-08`, and the `2026-08-24` /
-/// `2026-08` stamps are the existing format, so those apps can be retrofitted onto Keel without
-/// migrating a table or losing history (`docs/RETROFIT.md`). Prefer an awkward name here over a
-/// migration there.
+/// **The key strings are byte-compatible with the format existing telemetry backends already
+/// store.** That is deliberate and constrains the naming: `AGG#DAU`, `AGG#VER#2026-08`, and the
+/// `2026-08-24` / `2026-08` stamps match that existing format, so such an app can be retrofitted
+/// onto Keel without migrating a table or losing history (`docs/RETROFIT.md`). Prefer an awkward
+/// name here over a migration there.
 ///
 /// Layout, all in one table with `pk`/`sk` (`docs/ARCHITECTURE.md` §4):
 ///
