@@ -58,17 +58,15 @@ For background on *why* things are shaped the way they are, see
 
 27. [Stats dashboard](#27-stats-dashboard)
 
-**Part 5 — In-App Purchases (Optional)**
+**Part 5 — App Store Verification (Optional)**
 
-28. [Enabling IAP in the CDK stack](#28-enabling-iap-in-the-cdk-stack)
+28. [Enabling App Store notifications in the CDK stack](#28-enabling-app-store-notifications-in-the-cdk-stack)
 29. [App Store Connect: server notification URL](#29-app-store-connect-server-notification-url)
 30. [Client-side: EntitlementService](#30-client-side-entitlementservice)
-31. [Reporting purchases to the backend](#31-reporting-purchases-to-the-backend)
-32. [Querying entitlements](#32-querying-entitlements)
-33. [App Store Server Notifications](#33-app-store-server-notifications)
-34. [The HTTP contract (IAP routes)](#34-the-http-contract-iap-routes)
-35. [DynamoDB schema (IAP items)](#35-dynamodb-schema-iap-items)
-36. [Full wiring example (with IAP)](#36-full-wiring-example-with-iap)
+31. [Server-side: verifying notifications with `mount(appStore:)`](#31-server-side-verifying-notifications-with-mountappstore)
+32. [Calling Apple's App Store Server API](#32-calling-apples-app-store-server-api)
+33. [The HTTP contract (App Store notification route)](#33-the-http-contract-app-store-notification-route)
+34. [Full wiring example (with App Store notifications)](#34-full-wiring-example-with-app-store-notifications)
 
 ---
 
@@ -1068,8 +1066,8 @@ Build the real zip before the first `cdk deploy`.
 
 Most apps deploy `KeelLambda` as-is. An app that has server routes of its own does **not**
 fork it — it ships its own executable that depends on `KeelServer` + `KeelRouter` (plus
-`KeelIAPRouter` if it sells things), calls `builder.mount(keel:)` to add the framework
-routes, and registers its own routes on the same builder.
+`KeelAppStoreRouter` if it verifies App Store notifications), calls `builder.mount(keel:)` to
+add the framework routes, and registers its own routes on the same builder.
 `server/Sources/KeelLambda/Lambda.swift` is the reference for that wiring.
 
 Because your executable links Keel's server packages, it inherits two dependency pins Keel
@@ -1607,8 +1605,10 @@ backend.table.grantWriteData(backend.lambdaFunction);
 backend.table.grant(backend.lambdaFunction, "dynamodb:PutItem");
 ```
 
-Do **not** enable the `iap` prop just to get `PutItem` — that also mounts the App Store
-routes and expects the IAP environment variables. Grant directly on the table instead.
+The App Store notification prop (`appStoreNotifications`, §28) grants **no** `PutItem` — the
+framework verifies Apple's paperwork and stores nothing per user. So if your own routes write
+their own DynamoDB item kinds, grant `PutItem` directly on the table as shown above; there is no
+framework prop that will hand it to you as a side effect.
 
 ## Worked example: Orthanc's Stripe routes
 
@@ -1800,27 +1800,34 @@ and data binding are framework-provided and update with Keel.
 
 ---
 
-# Part 5 — In-App Purchases (Optional)
+# Part 5 — App Store Verification (Optional)
 
-Server-side IAP is opt-in. Apps that don't sell anything skip this entire part — the
-framework has no IAP surface when the feature is not mounted, and the X.509 crypto
-dependencies stay out of the binary.
+Server-side App Store verification is opt-in. Apps that don't need the server to react to
+Apple's paperwork skip this entire part — the framework has no App Store surface when the
+feature is not mounted, and the X.509 crypto dependencies stay out of the binary.
 
-For apps that do sell things, Keel provides server-side StoreKit 2 JWS verification,
-entitlement storage, refund/revocation handling via App Store Server Notifications v2,
-and a client-side `EntitlementService` that bridges StoreKit into the `LicenseState`
-the rest of the framework speaks.
+For apps that do, Keel's `KeelAppStore` module provides **verification only**: StoreKit 2 JWS
+verification, App Store Server Notification v2 verification, and the `AppStoreServerJWT` token
+signer for *calling* Apple's API. What a purchase *grants* — an entitlement, a credit balance,
+a local unlock — is your app's business, not the framework's. Keel hands you a verified payload;
+you decide what it means. The client-side `EntitlementService` still bridges StoreKit into the
+`LicenseState` the rest of the framework speaks.
 
-## 28. Enabling IAP in the CDK stack
+**When the server needs any of this.** Your server needs it when it hands out something that
+costs you money, or when it must react to a refund without the client's cooperation. If your app
+only unlocks local UI, on-device StoreKit verification is enough and no server check helps
+against a patched client — skip this part.
 
-Add the `iap` prop to `KeelBackend`:
+## 28. Enabling App Store notifications in the CDK stack
+
+Add the `appStoreNotifications` prop to `KeelBackend`:
 
 ```ts
 const backend = new KeelBackend(this, "Backend", {
   appName: "myapp",
   envName: "prod",
   auth: KeelAuth.sharedSecret({ parameterName: "/keel/myapp/prod/api-secret" }),
-  iap: {
+  appStoreNotifications: {
     bundleId: "com.example.myapp",
     productIds: ["unlock_pro", "monthly_premium"],
   },
@@ -1832,19 +1839,26 @@ This changes three things in the deployed stack:
 
 | What | Why |
 |---|---|
-| Three new routes on the HTTP API | `/v1/purchase` (POST), `/v1/entitlement` (GET), `/v1/appstore-notification` (POST) |
-| `dynamodb:PutItem` added to the Lambda's IAM policy | Entitlement items use `PutItem`, not `UpdateItem` — the core routes never need it |
-| `IAP_BUNDLE_ID` and `IAP_PRODUCT_IDS` environment variables | The Lambda reads them at cold start and configures the JWS verifier |
+| One new route on the HTTP API | `POST /v1/appstore-notification`, always **unauthenticated** |
+| `APP_STORE_BUNDLE_ID` and `APP_STORE_PRODUCT_IDS` environment variables | The Lambda reads them at cold start and configures the verifier / its handler |
+| (nothing else) | No `dynamodb:PutItem` grant — the framework stores no per-user item |
 
-**Auth behavior.** `/v1/purchase` and `/v1/entitlement` respect whatever auth mode you
-configured. `/v1/appstore-notification` is **always public** — Apple's servers hold no
-credentials of yours, and the JWS signature *is* the authentication.
+**No entitlement storage.** Unlike an earlier design, the prop does *not* mount purchase or
+entitlement routes and does *not* grant `PutItem`. Keel verifies the notification and calls your
+handler; recording what it means (if anything) is your code, on your own item kinds, with a grant
+you add yourself (see Part 3, "granting `PutItem` for your own routes").
 
-**Product allowlist.** `productIds` is the set of product identifiers the server will
-accept. A JWS for any other product is rejected, even if it verifies — a receipt for
-`com.someoneelse.product` from a different app sharing the same bundle must not grant
-anything here. List every product the app sells (non-consumable, auto-renewable, or
-non-renewing subscription). Update the list and redeploy when you add a new product.
+**Always public.** `/v1/appstore-notification` is unauthenticated whatever your auth mode —
+Apple's servers hold no credentials of yours, and the JWS signature *is* the authentication. The
+CDK construct throws at synth if the route somehow collides with a core route.
+
+**Product allowlist.** `productIds` is the set of product identifiers this backend expects,
+passed to the function as `APP_STORE_PRODUCT_IDS`. The ready-made `KeelLambda` enforces it: a
+notification whose inner transaction verifies and matches the bundle but names a product not in
+this list is logged and ignored, so a receipt for another app sharing the bundle, or a SKU you
+never shipped, grants nothing. List every product the app sells; update and redeploy when you
+add one. (An app that writes its own `mount(appStore:)` handler decides for itself what to do
+with the value.)
 
 Redeploy the stack after adding the prop:
 
@@ -1855,19 +1869,19 @@ cd backend && npx cdk deploy
 
 ## 29. App Store Connect: server notification URL
 
-After deploying with IAP enabled, configure App Store Connect to send notifications to
+After deploying with the prop enabled, configure App Store Connect to send notifications to
 your backend:
 
 1. Open [App Store Connect](https://appstoreconnect.apple.com) → your app → General → App Information
 2. Under **App Store Server Notifications**, set:
    - **Production Server URL**: `https://api.myapp.com/v1/appstore-notification`
-   - **Sandbox Server URL**: the same URL (the handler verifies the environment from the
+   - **Sandbox Server URL**: the same URL (the verifier reads the environment from the
      JWS, not from which URL received it)
 3. Select **Version 2 Notifications**
 
 Apple sends notifications for refunds, revocations, renewals, expirations, and other
-lifecycle events. Keel acts only on the three that revoke an entitlement (`REFUND`,
-`REVOKE`, `EXPIRED`); everything else is acknowledged and logged.
+lifecycle events. Keel *verifies* each one and hands it to your handler; which types your
+handler acts on is up to you.
 
 **The notification URL must be the custom domain**, not the AWS-generated hostname — for
 the same reason as the base URL (§24): Apple's configuration is permanent, and a replaced
@@ -1877,7 +1891,8 @@ API Gateway resource would silently break notification delivery.
 
 `EntitlementService` is an `@Observable @MainActor` class that bridges StoreKit 2 into
 the `LicenseState` enum (`free`, `trial`, `paid`) the rest of Keel speaks — the same
-value the telemetry ping carries and the cohort charts split by.
+value the telemetry ping carries and the cohort charts split by. It is unaffected by the
+server split: it is generic StoreKit plumbing that lives entirely on the device.
 
 ### Setup
 
@@ -1951,167 +1966,74 @@ Pass the entitlement state to the telemetry ping so the dashboard's cohort chart
 The `firstPaidLaunch` boolean in the ping fires exactly once per install — the first
 launch where a paid state is observed — and drives the `AGG#CONVERSIONS` counter.
 
-## 31. Reporting purchases to the backend
+## 31. Server-side: verifying notifications with `mount(appStore:)`
 
-After a successful StoreKit purchase, report it to the server so the entitlement is
-recorded in DynamoDB. The server verifies the JWS independently — the client's word is
-never trusted.
-
-```swift
-func completePurchase(userId: String) async throws {
-    guard let jws = entitlements.latestTransactionJWS else { return }
-    let client = BackendClient(configuration: keel)
-    let response = try await client.purchase(userId: userId, jws: jws)
-    // response.entitlements contains the server's full picture for this user
-}
-```
-
-### What happens server-side
-
-1. **JWS verification.** The `AppStoreJWSVerifier` validates the x5c certificate chain
-   against the pinned Apple Root CA G3, checks the ES256 signature, then confirms
-   `bundleId` matches and `productId` is in the allowlist.
-2. **Reverse pointer.** A `TXN#<originalTransactionId>` item is written first — the
-   lookup key App Store notifications carry for revocations.
-3. **Entitlement.** An `ENT#<userId>` / `<productId>` item is written with state
-   `active`, the purchase date, expiry (for subscriptions), and environment
-   (`Sandbox`/`Production`).
-4. **Response.** All of the user's entitlements are returned. Replace local state with
-   it wholesale — never merge.
-
-**Idempotent.** Re-presenting the same transaction overwrites with the same values, so a
-client that retries after a timeout cannot double-grant, and a restore-purchases flow
-just replays the newest JWS.
-
-### The userId
-
-The `userId` is your app's own opaque, stable user identifier — a Sign in with Apple
-`sub`, an account id, a UUID you generated. Keel never invents one. It becomes a DynamoDB
-partition key (`ENT#<userId>`), so it must be:
-
-- Non-empty
-- At most 128 bytes of printable ASCII (no spaces)
-- Stable across the install's lifetime
-
-An app without user identity has no business mounting the IAP routes — the purchase must
-be attributed to *someone* for the entitlement and its revocation to work.
-
-## 32. Querying entitlements
-
-Read what the server holds for a user:
+If your server must react to a notification — reverse a credit grant on a refund, flip your
+own license row — mount the endpoint in your own executable. The helper owns the route path,
+the raw-body read, the JWS verification, the failure→status mapping, and the 200 ack Apple
+needs to stop retrying. You write only the side effect:
 
 ```swift
-let client = BackendClient(configuration: keel)
-let response = try await client.entitlements(userId: userId)
+import KeelAppStore
+import KeelAppStoreRouter
 
-for entitlement in response.entitlements {
-    print(entitlement.productId, entitlement.isEntitled)
-}
-```
-
-`isEntitled` is the one field to branch on — it means "active *and* unexpired", evaluated
-server-side at `generatedAt` so the client compares no dates.
-
-An unknown user returns an empty list, not an error — "never bought anything" is a normal
-answer.
-
-### When to query
-
-Most apps don't need this endpoint at all. StoreKit's local cache (via
-`EntitlementService`) is the primary source of truth on the device. The server query
-exists for:
-
-- **Cross-device sync** — a second device that needs to know what the first bought
-- **Server-side access control** — your own endpoints checking entitlements before
-  serving premium content
-- **Support tools** — an admin dashboard showing a user's purchase state
-
-## 33. App Store Server Notifications
-
-Notifications arrive at `POST /v1/appstore-notification` as a JWS payload signed by
-Apple. The handler:
-
-1. Verifies the outer envelope's JWS (same x5c + ES256 chain as transactions)
-2. Classifies the notification type
-3. For **revocations** (`REFUND`, `REVOKE`, `EXPIRED`):
-   - Verifies the inner `signedTransactionInfo`
-   - Looks up `TXN#<originalTransactionId>` to find the owner
-   - Flips the entitlement's state to `revoked` and records the revocation date
-4. For everything else: acknowledges and logs
-
-The handler always returns `200 {"ok": true}`, because Apple retries on non-2xx and
-retrying cannot fix structural issues (an unknown transaction, a missing reverse pointer).
-Errors are logged, not surfaced to Apple's retry loop.
-
-### What each notification type does
-
-| Type | Keel's action |
-|---|---|
-| `REFUND` | Revokes the entitlement |
-| `REVOKE` | Revokes the entitlement |
-| `EXPIRED` | Revokes the entitlement |
-| `DID_RENEW` | Acknowledged, logged — expiry is evaluated on read, no write needed |
-| `SUBSCRIBED`, `DID_CHANGE_RENEWAL_STATUS`, etc. | Acknowledged, logged |
-| Unknown future types | Acknowledged — never 400'd into Apple's retry loop |
-
-### Revocation flow in detail
-
-```
-Apple → POST /v1/appstore-notification
-  → verify outer JWS (x5c + ES256)
-  → REFUND? → verify inner signedTransactionInfo
-  → TXN#<originalTransactionId> → (userId, productId)
-  → ENT#<userId> / <productId> → flip state to revoked
-  → 200 {"ok": true}
-```
-
-The reverse pointer (`TXN#`) is why `PurchaseHandler` writes it first: a `TXN#` item
-without an entitlement revokes nothing and grants nothing, while the opposite order could
-leave a granted entitlement no notification can ever find.
-
-## 34. The HTTP contract (IAP routes)
-
-Three routes, mounted only when the `iap` prop is present.
-
-### `POST /v1/purchase`
-
-Auth: the stack's auth mode.
-
-Request:
-
-```json
-{ "userId": "user-abc-123", "jws": "<Transaction.jwsRepresentation>" }
-```
-
-Response (200):
-
-```json
-{
-  "entitlements": [
-    {
-      "productId": "unlock_pro",
-      "state": "active",
-      "isEntitled": true,
-      "purchaseDate": "2026-08-28T10:00:00Z",
-      "expiresDate": null,
-      "environment": "Production"
+let verifier = NotificationVerifier()   // pins Apple Root CA G3
+let builder = HTTPRouterBuilder()
+builder.mount(keel: keel)
+builder.mount(appStore: verifier, logger: logger) { notification in
+    // `notification` is a verified `NotificationPayload` — Apple signed it.
+    switch notification.notificationType {
+    case .refund, AppStoreNotificationType(rawValue: "REVOKE"):
+        guard let inner = notification.signedTransactionInfo else { return }
+        let transaction = try await verifier.verifyTransactionInfo(inner)
+        // your own storage: revoke what this transaction granted
+        await myLicenseStore.revoke(transaction.originalTransactionId)
+    default:
+        break   // acknowledged and logged by the helper; act only on what you handle
     }
-  ],
-  "generatedAt": "2026-08-28T10:00:01Z"
 }
+let router = builder.build()
 ```
 
-Errors: `400` for an unverifiable JWS (the specific failure is logged, never returned —
-no progress meter for forgers), invalid `userId`, or malformed body.
+The ready-made `KeelLambda` mounts this too when `appStoreNotifications` is set, but with a
+handler that only verifies the inner transaction against the configured bundle and logs — it has
+no app-specific state to touch. An app with real work to do writes the closure above in its own
+executable.
 
-### `GET /v1/entitlement`
+### Why the payload types have no public initializer
 
-Auth: the stack's auth mode.
+`NotificationPayload` and `SignedTransactionInfo` can only be produced by the verifier — their
+initializers are not public. Any function that takes one is therefore *provably* handling data
+Apple signed; you cannot fabricate a "verified" payload and hand it to code that trusts it. For
+tests, the `KeelAppStoreTesting` module exposes a factory (`KeelAppStoreFixtures`) that builds
+these values without a real JWS.
 
-Query: `?userId=user-abc-123`
+### Notification types are an open enum
 
-Response: same shape as the purchase response. Empty `entitlements` array for an unknown
-user.
+`AppStoreNotificationType` is a `RawRepresentable` open enum, not a closed one: `.refund` and
+`.consumptionRequest` are named, and any other value — including a type Apple ships next year —
+arrives as `AppStoreNotificationType(rawValue: "…")` rather than a decode failure. Switch on the
+named constants and default the rest.
+
+## 32. Calling Apple's App Store Server API
+
+To *call* Apple (e.g. to answer a `CONSUMPTION_REQUEST`), `AppStoreServerJWT` signs and caches
+the ES256 bearer token Apple's API expects:
+
+```swift
+let jwt = try AppStoreServerJWT(
+    p8PEM: ascPrivateKeyPEM,     // your App Store Connect API key (.p8)
+    keyID: "ABC123DEFG",
+    issuerID: "…",
+    bundleID: "com.example.myapp")
+let bearer = try await jwt.token()   // reused until it nears expiry, then re-signed
+```
+
+Apps that only *receive* notifications never construct it, so they never link it.
+
+## 33. The HTTP contract (App Store notification route)
+
+One route, mounted only when the `appStoreNotifications` prop is present.
 
 ### `POST /v1/appstore-notification`
 
@@ -2123,32 +2045,13 @@ Request (Apple's format):
 { "signedPayload": "<JWS>" }
 ```
 
-Response: `200 {"ok": true}` in all cases.
+Response: `200 {"ok": true}` when the payload verified and your handler returned; a non-2xx
+(so Apple retries) when the payload was unverifiable or your handler threw. The specific
+verification failure is logged, never returned — no progress meter for forgers.
 
-## 35. DynamoDB schema (IAP items)
+## 34. Full wiring example (with App Store notifications)
 
-The IAP items share the same single table as the counters and config. They live under
-two key prefixes that no telemetry path ever reads or writes — the privacy model's
-point 4 (§9) is enforced by module boundaries.
-
-| Partition key | Sort key | Payload | TTL |
-|---|---|---|---|
-| `ENT#<userId>` | `<productId>` | Entitlement JSON (state, dates, environment) | none |
-| `TXN#<originalTransactionId>` | `owner` | `{userId, productId}` | none |
-
-`ENT#` items are the entitlements — one per user per product, upserted on purchase,
-flipped to `revoked` on refund. Bounded by the number of products the app sells.
-
-`TXN#` items are reverse pointers — an App Store notification names a transaction
-lineage, never a user, so revocation needs `originalTransactionId → (userId, productId)`.
-Written at purchase time, one item per lineage.
-
-No TTL on either: entitlements are permanent records (a revoked entitlement is kept,
-not deleted — "was refunded" is the fact a support conversation needs).
-
-## 36. Full wiring example (with IAP)
-
-Extending the basic "Putting it all together" example with purchases:
+Extending the basic "Putting it all together" example with server-side verification:
 
 ```swift
 @main
@@ -2183,31 +2086,16 @@ struct MyApp: App {
 }
 ```
 
-After a successful StoreKit purchase in your paywall:
-
-```swift
-func handlePurchase(_ result: Product.PurchaseResult) async {
-    guard case .success(let verification) = result,
-          case .verified = verification else { return }
-
-    // StoreKit recorded the transaction locally — EntitlementService picks it up
-    // via Transaction.updates. Now tell the server:
-    await entitlements.refresh()
-    if let jws = entitlements.latestTransactionJWS {
-        let client = BackendClient(configuration: Self.keel)
-        try? await client.purchase(userId: currentUserId, jws: jws)
-    }
-}
-```
-
-And the CDK stack:
+The client just uses `EntitlementService` — there is no purchase call to the backend, because
+the framework no longer stores entitlements. If your server reacts to refunds, that lives in your
+own Lambda's `mount(appStore:)` handler (§31), and the CDK stack opts in:
 
 ```ts
 const backend = new KeelBackend(this, "Backend", {
     appName: "myapp",
     envName: "prod",
     auth: KeelAuth.sharedSecret({ parameterName: "/keel/myapp/prod/api-secret" }),
-    iap: {
+    appStoreNotifications: {
         bundleId: "com.example.myapp",
         productIds: ["unlock_pro"],
     },
@@ -2218,8 +2106,6 @@ const backend = new KeelBackend(this, "Backend", {
     budgetEmail: "you@example.com",
 });
 ```
-
----
 
 ## Putting it all together
 

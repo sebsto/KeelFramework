@@ -29,7 +29,9 @@ version range without changing behaviour.
 
 `DynamoQueries` (lambda-kit's `@Table` macro) is deliberately **not** adopted for the
 counter table: every write there is an `ADD` on a key `CounterSchema` builds, which the
-macro does not model. It remains a good candidate for the IAP entitlement items.
+macro does not model. (An earlier draft floated it for the IAP entitlement items; those were
+removed from the framework — `KeelAppStore` verifies App Store paperwork and stores nothing —
+so the macro has no candidate left here.)
 
 ## App-side compatibility
 

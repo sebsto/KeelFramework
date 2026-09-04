@@ -86,12 +86,13 @@ different prefix). The fix is a one-time copy — roughly four items per month �
 a name alias in `StatsHandler` that reads both keys and merges results. The copy is
 simpler; the alias survives future key renames more gracefully.
 
-**Orthanc does not mount `KeelIAP`.** Orthanc's purchase flow runs entirely on-device
+**Orthanc does not need `KeelAppStore`.** Orthanc's purchase flow runs entirely on-device
 (StoreKit receipt validation + Ed25519 server signature), and the published privacy
-statement says the table holds no per-device row. Mounting `KeelIAP` would add exactly
-that row, falsifying the privacy claim. Orthanc keeps its own `LicenseHandlers` and
-`VPNBilling` is not applicable here — the distinction matters because `KeelIAP` is
-designed for entitlement tracking, not for Orthanc's signature-and-forget model.
+statement says the table holds no per-device row. Since the framework's `KeelAppStore` module
+verifies Apple's paperwork and stores nothing (the entitlement model was removed — issue #12),
+there is no framework row to falsify the privacy claim with; but Orthanc has no server-side
+verification need at all — it unlocks local UI, and no server check helps against a patched
+client — so it mounts nothing here and keeps its own `LicenseHandlers`.
 
 ## odvpn
 
@@ -101,16 +102,18 @@ designed for entitlement tracking, not for Orthanc's signature-and-forget model.
 | OS spread incremented on `firstToday` | Keel dedups it monthly; `sum(osVersions)` becomes ≈ MAU from cutover (documented behavior change, deliberate) |
 | `StatsClient` persisting dedup before send | Keel persists only after an accepted send — silently fixes the dropped-day bug |
 | IAM auth via Cognito | `KeelAuth.iam()`; the SigV4-signing transport stays odvpn's own `HTTPTransport` conformance |
-| purchase/credits/billing stack | **not** Keel's — `KeelIAP` covers entitlements, not credit metering; odvpn keeps `VPNBilling` and mounts Keel beside it |
+| purchase/credits/billing stack | **not** Keel's — `KeelAppStore` verifies App Store paperwork but stores nothing; odvpn keeps `VPNBilling` (credit metering, ledger, consumption reporting) and can reuse Keel's verifier beside it |
 
 odvpn is the "large app adopts the telemetry/bootstrap slice only" case: its eleven
 stacks keep their jobs, `KeelBackend` replaces just the stats table + ping/stats routes,
 and its `usage.js` page is retired for `dashboard/`.
 
-**odvpn does not mount `KeelIAP` either.** Its purchase model is credit-based (buy
-blocks of credits, deduct on each VPN session), which has no mapping onto `KeelIAP`'s
-boolean entitlement model. `VPNBilling` stays as-is; Keel covers only the
-bootstrap/telemetry/stats slice.
+**odvpn keeps its own billing stack.** Its purchase model is credit-based (buy blocks of
+credits, deduct on each VPN session), with a ledger, consumption reporting, and refund reversal
+that no framework models. Keel's `KeelAppStore` is verification-only, so there is nothing to map
+onto or reject — odvpn's `VPNBilling` stays as-is (and is in fact where Keel's verifier was
+lifted from). Keel covers only the bootstrap/telemetry/stats slice; if odvpn later shares Keel's
+verifier, that is a code reuse, not a data model it has to adopt.
 
 ## What no retrofit needs
 

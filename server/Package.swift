@@ -38,11 +38,12 @@ let package = Package(
         .executable(name: "KeelAuthorizerLambda", targets: ["KeelAuthorizerLambda"]),
         // Admin CLI: read/write the config item, dump the counters.
         .executable(name: "keel", targets: ["keel-cli"]),
-        // App Store purchases and entitlements — optional; apps without server-side
-        // IAP never link it or its crypto dependencies.
-        .library(name: "KeelIAP", targets: ["KeelIAP"]),
-        .library(name: "KeelIAPDynamoDB", targets: ["KeelIAPDynamoDB"]),
-        .library(name: "KeelIAPRouter", targets: ["KeelIAPRouter"]),
+        // App Store JWS + notification verification — optional; apps without server-side
+        // App Store verification never link it or its crypto dependencies.
+        .library(name: "KeelAppStore", targets: ["KeelAppStore"]),
+        // Fixture factory for building verified-payload values in tests.
+        .library(name: "KeelAppStoreTesting", targets: ["KeelAppStoreTesting"]),
+        .library(name: "KeelAppStoreRouter", targets: ["KeelAppStoreRouter"]),
     ],
     // Each dependency is commented in until the phase that first needs it, so
     // `swift build` never resolves something no target imports. All of them are
@@ -65,7 +66,7 @@ let package = Package(
         .package(url: "https://github.com/soto-project/soto-core.git", from: "7.13.0"),
         .package(url: "https://github.com/apple/swift-configuration.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.0"),
-        // KeelIAP only: StoreKit-2 JWS verification is X.509 chain validation plus an
+        // KeelAppStore only: StoreKit-2 JWS verification is X.509 chain validation plus an
         // ES256 signature, and these are the pieces worth depending on for that.
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.10.0"),
         .package(url: "https://github.com/apple/swift-certificates.git", from: "1.10.0"),
@@ -151,9 +152,8 @@ let package = Package(
                 "KeelServer",
                 "KeelServerDynamoDB",
                 "KeelRouter",
-                "KeelIAP",
-                "KeelIAPDynamoDB",
-                "KeelIAPRouter",
+                "KeelAppStore",
+                "KeelAppStoreRouter",
                 .product(name: "AWSLambdaRuntime", package: "swift-aws-lambda-runtime"),
                 .product(name: "AWSLambdaEvents", package: "swift-aws-lambda-events"),
                 .product(name: "Routing", package: "lambda-kit"),
@@ -174,7 +174,7 @@ let package = Package(
             swiftSettings: strictSettings
         ),
         .target(
-            name: "KeelIAP",
+            name: "KeelAppStore",
             dependencies: [
                 "KeelServer",
                 .product(name: "Crypto", package: "swift-crypto"),
@@ -184,19 +184,21 @@ let package = Package(
             ],
             swiftSettings: strictSettings
         ),
+        // Fixture factory: builds verified-payload values (`NotificationPayload`,
+        // `SignedTransactionInfo`) for tests. Reaches their `package`-scoped inits because it
+        // is the same package — so tests stay easy while an adopting app cannot fabricate a
+        // "verified" payload.
         .target(
-            name: "KeelIAPDynamoDB",
+            name: "KeelAppStoreTesting",
             dependencies: [
-                "KeelIAP",
-                "SotoDynamoDB",
-                .product(name: "Logging", package: "swift-log"),
+                "KeelAppStore"
             ],
             swiftSettings: strictSettings
         ),
         .target(
-            name: "KeelIAPRouter",
+            name: "KeelAppStoreRouter",
             dependencies: [
-                "KeelIAP",
+                "KeelAppStore",
                 "KeelServer",
                 .product(name: "Routing", package: "lambda-kit"),
                 .product(name: "AWSLambdaEvents", package: "swift-aws-lambda-events"),
@@ -205,13 +207,17 @@ let package = Package(
             swiftSettings: strictSettings
         ),
         .testTarget(
-            name: "KeelIAPTests",
+            name: "KeelAppStoreTests",
             dependencies: [
-                "KeelIAP",
+                "KeelAppStore",
+                "KeelAppStoreTesting",
+                "KeelAppStoreRouter",
                 "KeelServer",
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "X509", package: "swift-certificates"),
                 .product(name: "SwiftASN1", package: "swift-asn1"),
+                .product(name: "AWSLambdaEvents", package: "swift-aws-lambda-events"),
+                .product(name: "Routing", package: "lambda-kit"),
                 .product(name: "Logging", package: "swift-log"),
             ],
             swiftSettings: strictSettings

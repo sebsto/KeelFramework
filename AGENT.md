@@ -4,7 +4,7 @@ Instructions for an AI agent adopting **Keel** in an app, or migrating an existi
 onto it. Keel gives an app three things without an App Store release in the loop:
 remote config + feature flags + a version gate (`/v1/bootstrap`), anonymous usage
 counters with a public stats page (`/v1/ping`, `/v1/stats`), and optionally App Store
-entitlements (`/v1/purchase`, `/v1/entitlement`, `/v1/appstore-notification`).
+notification verification (`/v1/appstore-notification`).
 
 Authoritative references, in the order to consult them:
 
@@ -51,7 +51,7 @@ it works.
    `scripts/generate-soto.sh` (see `docs/adr/0006-codegen-soto.md`). It builds with
    relaxed settings and is excluded from lint.
 6. **One table, no GSI, no Scan.** Every read is a `Query`/`GetItem` on a key
-   `CounterSchema` (or `EntitlementSchema`) builds. If a feature seems to need a GSI,
+   `CounterSchema` builds. If a feature seems to need a GSI,
    the schema is wrong — put the stamp in the right half of the key instead (§4).
 7. **Validation rejects, never truncates.** Client strings that become DynamoDB keys are
    bounded; a limit violation is a 400 naming the field and rule, **never echoing the
@@ -87,7 +87,7 @@ const backend = new KeelBackend(this, "Backend", {
   envName: "dev",                      // "prod" flips the table to RETAIN + PITR
   auth: KeelAuth.none(),               // or sharedSecret / iam / jwt — see below
   lambdaPackagePath: "path/to/keel/server",
-  // aliasRoutes, domain, iap, budgetEmail, reservedConcurrency: see KeelBackendProps
+  // aliasRoutes, domain, appStoreNotifications, budgetEmail, reservedConcurrency: see KeelBackendProps
 });
 new KeelStatsSite(this, "Stats", { api: backend.httpApi });
 ```
@@ -104,8 +104,9 @@ new KeelStatsSite(this, "Stats", { api: backend.httpApi });
   `keel` CLI commands).
 
 An app with its own server routes does **not** fork `KeelLambda`: it writes its own
-executable that depends on `KeelServer` + `KeelRouter` (+ `KeelIAPRouter` if selling),
-calls `builder.mount(keel:)`, and registers its own routes on the same builder.
+executable that depends on `KeelServer` + `KeelRouter` (+ `KeelAppStoreRouter` if verifying
+App Store notifications), calls `builder.mount(keel:)`, and registers its own routes on the
+same builder.
 `server/Sources/KeelLambda/Lambda.swift` is the reference for the wiring.
 
 ### Client (Swift)
@@ -126,8 +127,10 @@ Wire order matters; copy `Templates/SampleApp/App/SampleApp.swift`:
    the fetch. Second launch of a UTC day sends nothing at all.
 6. Settings screen: `TelemetryToggle()` with `TelemetryToggle.footer`.
 7. Selling something? `EntitlementService(paidProducts:)`, `.task { await es.start() }`,
-   and feed `es.licenseState` into the ping. Server side, add `iap:` to `KeelBackend`
-   and point App Store Connect's server-notification URL at `/v1/appstore-notification`.
+   and feed `es.licenseState` into the ping. If the server must react to refunds/revocations,
+   add `appStoreNotifications:` to `KeelBackend`, call `builder.mount(appStore:)` in your own
+   executable, and point App Store Connect's server-notification URL at
+   `/v1/appstore-notification`. Keel verifies the payload; the grant/revoke decision is yours.
 
 App-specific distributions (e.g. "how many profiles") are **bucketed on the device**:
 pass `dimensions: ["profiles": "3-5"]` to `run`, and declare the allowlist server-side
@@ -169,7 +172,7 @@ Grep the app and its backend for, and write down:
 - [ ] Counter table: name, key formats, whether it matches `AGG#` (see `CounterSchema`)
 - [ ] Auth: how requests are authorized today
 - [ ] Server routes that are NOT Keel's concern (these stay in the app's own executable)
-- [ ] IAP/receipt verification, if server-side
+- [ ] App Store notification verification, if server-side
 
 ### Step 1 — backend swap
 

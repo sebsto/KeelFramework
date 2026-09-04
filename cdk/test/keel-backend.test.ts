@@ -436,61 +436,55 @@ describe("KeelBackend operations", () => {
   });
 });
 
-describe("KeelBackend IAP", () => {
-  const iap = { bundleId: "com.example.app", productIds: ["unlock_pro", "sub_monthly"] };
+describe("KeelBackend App Store notifications", () => {
+  const appStoreNotifications = {
+    bundleId: "com.example.app",
+    productIds: ["unlock_pro", "sub_monthly"],
+  };
 
-  test("no IAP surface at all unless opted in", () => {
+  test("no App Store surface at all unless opted in", () => {
     const { template } = synth();
     const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
-    expect(routes.some((r) => String(r.Properties.RouteKey).includes("purchase"))).toBe(false);
+    expect(routes.some((r) => String(r.Properties.RouteKey).includes("appstore"))).toBe(false);
+    // No entitlement items are written, so no PutItem grant in any policy.
     const policies = JSON.stringify(template.findResources("AWS::IAM::Policy"));
     expect(policies).not.toContain("dynamodb:PutItem");
   });
 
-  test("opting in mounts the three routes and passes the identity to the function", () => {
-    const { template } = synth({ iap });
-    for (const key of [
-      "POST /v1/purchase",
-      "GET /v1/entitlement",
-      "POST /v1/appstore-notification",
-    ]) {
-      template.hasResourceProperties("AWS::ApiGatewayV2::Route", { RouteKey: key });
-    }
+  test("opting in mounts the notification route and passes the identity to the function", () => {
+    const { template } = synth({ appStoreNotifications });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /v1/appstore-notification",
+    });
+    // The purchase/entitlement routes are gone entirely.
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    expect(routes.some((r) => String(r.Properties.RouteKey).includes("purchase"))).toBe(false);
+    expect(routes.some((r) => String(r.Properties.RouteKey).includes("entitlement"))).toBe(false);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
-          IAP_BUNDLE_ID: "com.example.app",
-          IAP_PRODUCT_IDS: "unlock_pro,sub_monthly",
+          APP_STORE_BUNDLE_ID: "com.example.app",
+          APP_STORE_PRODUCT_IDS: "unlock_pro,sub_monthly",
         }),
       },
     });
   });
 
-  test("entitlement writes get PutItem, and only then", () => {
-    const { template } = synth({ iap });
-    template.hasResourceProperties("AWS::IAM::Policy", {
-      PolicyDocument: {
-        Statement: Match.arrayWith([
-          Match.objectLike({
-            Action: Match.arrayWith(["dynamodb:PutItem"]),
-          }),
-        ]),
-      },
-    });
+  test("no PutItem grant even when opted in — the framework stores nothing per user", () => {
+    const { template } = synth({ appStoreNotifications });
+    const policies = JSON.stringify(template.findResources("AWS::IAM::Policy"));
+    expect(policies).not.toContain("dynamodb:PutItem");
   });
 
   test("the notification route stays public even under an auth mode", () => {
     const { template } = synth({
-      iap,
+      appStoreNotifications,
       auth: KeelAuth.iam(),
     });
     const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
     const byKey = Object.fromEntries(routes.map((r) => [r.Properties.RouteKey, r.Properties]));
     // Apple cannot present credentials; the JWS signature is the boundary.
     expect(byKey["POST /v1/appstore-notification"].AuthorizationType ?? "NONE").toBe("NONE");
-    // The user-facing IAP routes are authorized like everything else.
-    expect(byKey["POST /v1/purchase"].AuthorizationType).toBe("AWS_IAM");
-    expect(byKey["GET /v1/entitlement"].AuthorizationType).toBe("AWS_IAM");
   });
 });
 
@@ -550,15 +544,13 @@ describe("KeelBackend CORS", () => {
     }
   });
 
-  test("OPTIONS routes also cover IAP paths when iap is configured", () => {
+  test("OPTIONS route also covers the notification path when it is configured", () => {
     const { template } = synth({
       allowedOrigins: ["https://example.com"],
-      iap: { bundleId: "com.example.app", productIds: ["unlock_pro"] },
+      appStoreNotifications: { bundleId: "com.example.app", productIds: ["unlock_pro"] },
     });
-    for (const path of ["/v1/purchase", "/v1/entitlement", "/v1/appstore-notification"]) {
-      template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
-        RouteKey: `OPTIONS ${path}`,
-      });
-    }
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "OPTIONS /v1/appstore-notification",
+    });
   });
 });

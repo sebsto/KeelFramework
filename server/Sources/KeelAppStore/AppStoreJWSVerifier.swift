@@ -18,7 +18,7 @@ public struct VerifiedTransaction: Sendable, Equatable {
     public let environment: String
 
     /// When the subscription period ends, for auto-renewables. Nil for non-consumables,
-    /// which is what makes an entitlement without one permanent.
+    /// which is what makes such a purchase permanent.
     public let expiresDate: Date?
 
     public init(

@@ -92,8 +92,10 @@ public final class EntitlementService {
     /// does not see a flash of locked UI in practice.
     public private(set) var licenseState: LicenseState = .free
 
-    /// The newest relevant JWS, for apps that report purchases to a Keel backend with
-    /// IAP mounted (`BackendClient.purchase(userId:jws:)`). Nil for free users.
+    /// The newest relevant JWS, for apps that forward a transaction to their own backend
+    /// (Keel verifies App Store paperwork via `KeelAppStore` but no longer offers a
+    /// purchase-reporting route — what a purchase grants is the app's own concern). Nil for
+    /// free users.
     public private(set) var latestTransactionJWS: String?
 
     private let paidProducts: Set<String>

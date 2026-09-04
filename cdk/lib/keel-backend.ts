@@ -19,7 +19,7 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 
 import type { KeelRoute } from "./contract";
-import { KEEL_CORE_ROUTES, KEEL_IAP_ROUTES, KEEL_TABLE_KEYS } from "./contract";
+import { KEEL_APPSTORE_NOTIFICATION_ROUTE, KEEL_CORE_ROUTES, KEEL_TABLE_KEYS } from "./contract";
 import type { KeelDomainOptions} from "./domain";
 import { normalizeBasePath, validateDomainName } from "./domain";
 import { KeelAuth } from "./keel-auth";
@@ -141,20 +141,29 @@ export interface KeelBackendProps {
   readonly logLevel?: string;
 
   /**
-   * Mount the App Store purchase/entitlement routes. Off by default; apps without
-   * server-side IAP get no IAP surface at all. `/v1/appstore-notification` is always
-   * public when mounted — Apple's servers hold no credentials of ours, and the JWS
-   * verification is the authentication.
+   * Mount the App Store server-notification route (verification-only). Off by default; apps
+   * without server-side App Store verification get no App Store surface at all.
+   * `/v1/appstore-notification` is always public when mounted — Apple's servers hold no
+   * credentials of ours, and the JWS verification is the authentication.
+   *
+   * The framework verifies Apple's JWS and hands the app a verified payload; it does **not**
+   * model purchases or entitlements, and never writes a per-user item (there is no
+   * `dynamodb:PutItem` grant). What a notification means is the app's business, in its own
+   * `builder.mount(appStore:)` handler.
    */
-  readonly iap?: KeelIapOptions;
+  readonly appStoreNotifications?: KeelAppStoreOptions;
 }
 
-/** Settings for `KeelBackendProps.iap`. */
-export interface KeelIapOptions {
-  /** The app's bundle id, pinned by the JWS verifier. */
+/** Settings for `KeelBackendProps.appStoreNotifications`. */
+export interface KeelAppStoreOptions {
+  /** The app's bundle id, pinned by the JWS verifier against the inner transaction. */
   readonly bundleId: string;
 
-  /** Every product id this backend may grant. A receipt for anything else is rejected. */
+  /**
+   * Every product id this backend expects. Wired to the function as `APP_STORE_PRODUCT_IDS`;
+   * the ready-made `KeelLambda` rejects a verified notification whose product is not in this
+   * list (an app with its own `mount(appStore:)` handler decides for itself).
+   */
   readonly productIds: string[];
 }
 
@@ -242,24 +251,24 @@ export class KeelBackend extends Construct {
         ...(props.allowedOrigins?.length
           ? { ALLOWED_ORIGINS: props.allowedOrigins.join(",") }
           : {}),
-        ...(props.iap
+        ...(props.appStoreNotifications
           ? {
-              IAP_BUNDLE_ID: props.iap.bundleId,
-              IAP_PRODUCT_IDS: props.iap.productIds.join(","),
+              APP_STORE_BUNDLE_ID: props.appStoreNotifications.bundleId,
+              APP_STORE_PRODUCT_IDS: props.appStoreNotifications.productIds.join(","),
             }
           : {}),
       },
     });
 
     // The function's whole vocabulary: atomic ADDs, windowed Queries, and the config item.
-    // Deliberately not grantReadWriteData — no Scan, no Delete, no BatchWrite. PutItem
-    // exists only for the entitlement items, so only IAP deployments get it.
+    // Deliberately not grantReadWriteData — no Scan, no Delete, no BatchWrite, and no PutItem:
+    // the framework verifies App Store notifications but stores nothing per user, so there is
+    // no entitlement item to write.
     this.table.grant(
       this.handler,
       "dynamodb:UpdateItem",
       "dynamodb:Query",
       "dynamodb:GetItem",
-      ...(props.iap ? ["dynamodb:PutItem"] : []),
     );
 
     // --- HTTP API ---
@@ -271,16 +280,34 @@ export class KeelBackend extends Construct {
     const integration = new HttpLambdaIntegration("Handler", this.handler);
     const authorizer = this.authorizer(auth, packagePath);
 
+    const notificationRoute = props.appStoreNotifications
+      ? KEEL_APPSTORE_NOTIFICATION_ROUTE
+      : undefined;
+
+    // Synth-time guard: the notification route must not collide with a core route. It is only
+    // ever mounted unauthenticated (the `isPublic` check below forces it), because Apple cannot
+    // present credentials — a path that ended up authorized would silently 401 Apple.
+    if (notificationRoute && KEEL_CORE_ROUTES.some((r) => r.path === notificationRoute.path)) {
+      throw new Error(
+        `appStoreNotifications route ${notificationRoute.path} collides with a core route`,
+      );
+    }
+
     const routes: Array<{ path: string; method: apigwv2.HttpMethod }> = [
       ...KEEL_CORE_ROUTES.map((route: KeelRoute) => ({
         path: route.path,
         method: route.method === "GET" ? apigwv2.HttpMethod.GET : apigwv2.HttpMethod.POST,
       })),
-      ...(props.iap
-        ? KEEL_IAP_ROUTES.map((route: KeelRoute) => ({
-            path: route.path,
-            method: route.method === "GET" ? apigwv2.HttpMethod.GET : apigwv2.HttpMethod.POST,
-          }))
+      ...(notificationRoute
+        ? [
+            {
+              path: notificationRoute.path,
+              method:
+                notificationRoute.method === "GET"
+                  ? apigwv2.HttpMethod.GET
+                  : apigwv2.HttpMethod.POST,
+            },
+          ]
         : []),
       ...Object.entries(props.aliasRoutes ?? {}).map(([aliasPath, alias]) => ({
         path: aliasPath,
@@ -311,7 +338,7 @@ export class KeelBackend extends Construct {
     if (props.allowedOrigins && props.allowedOrigins.length > 0) {
       const corsPaths = new Set([
         ...KEEL_CORE_ROUTES.map((r: KeelRoute) => r.path),
-        ...(props.iap ? KEEL_IAP_ROUTES.map((r: KeelRoute) => r.path) : []),
+        ...(notificationRoute ? [notificationRoute.path] : []),
         ...Object.keys(props.aliasRoutes ?? {}),
       ]);
       for (const p of corsPaths) {

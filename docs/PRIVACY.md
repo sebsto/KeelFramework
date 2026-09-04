@@ -76,9 +76,10 @@ running totals with no dates attached.
 
 ## <If your app has in-app purchases>
 
-Purchases are processed by Apple. <App> receives a signed receipt from Apple, verifies it,
-and stores the entitlement it grants against <your Apple-provided account identifier /
-your app account token>. It never receives your payment details.
+Purchases are processed by Apple. <App> receives a signed receipt from Apple and verifies it.
+<If your server records what a purchase grants: and stores the entitlement it grants against
+<your Apple-provided account identifier / your app account token>.> It never receives your
+payment details.
 
 ## Changes to this policy
 
