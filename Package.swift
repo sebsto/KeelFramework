@@ -33,6 +33,10 @@ let package = Package(
         .library(name: "KeelCore", targets: ["KeelCore"]),
         // The Apple-platform layer: @Observable stores, SwiftUI, StoreKit.
         .library(name: "KeelClient", targets: ["KeelClient"]),
+        // The reference AWS SigV4 signing transport, for apps deployed behind
+        // `KeelAuth.iam()`. A production library (Apple/CryptoKit-gated) so a shipping
+        // target can depend on it without pulling in the test-support module.
+        .library(name: "KeelClientSigning", targets: ["KeelClientSigning"]),
         // Fakes and helpers for an app's own test target.
         .library(name: "KeelClientTesting", targets: ["KeelClientTesting"]),
     ],
@@ -54,6 +58,11 @@ let package = Package(
             swiftSettings: strictSettings
         ),
         .target(
+            name: "KeelClientSigning",
+            dependencies: ["KeelCore"],
+            swiftSettings: strictSettings
+        ),
+        .target(
             name: "KeelClientTesting",
             dependencies: ["KeelCore", "KeelClient"],
             swiftSettings: strictSettings
@@ -69,7 +78,7 @@ let package = Package(
         ),
         .testTarget(
             name: "KeelClientTests",
-            dependencies: ["KeelClient", "KeelClientTesting"],
+            dependencies: ["KeelClient", "KeelClientSigning", "KeelClientTesting"],
             swiftSettings: strictSettings
         ),
     ]

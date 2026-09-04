@@ -4,6 +4,7 @@
 import CryptoKit
 import Foundation
 import KeelCore
+import KeelClientSigning
 import KeelClientTesting
 import Testing
 

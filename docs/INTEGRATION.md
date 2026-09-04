@@ -93,6 +93,7 @@ Then add the targets you need:
 |---|---|
 | `KeelClient` | Apple-platform app (iOS, macOS, tvOS, watchOS, visionOS) — includes SwiftUI views, `@Observable` stores, and StoreKit integration |
 | `KeelCore` | Cross-platform or Skip-transpiled module — wire types, transport, and pure decision logic only |
+| `KeelClientSigning` | Apple-platform production module — the reference `KeelSigV4Transport` for apps behind `KeelAuth.iam()` |
 | `KeelClientTesting` | Your test target — fakes and in-memory stores for unit tests |
 
 In your app target:
@@ -2247,11 +2248,12 @@ ordering, which you compute regardless.
 
 ### Reference implementation — `KeelSigV4Transport` (Apple / CryptoKit only)
 
-`KeelClientTesting` ships a **real, tested SigV4 signer**: `KeelSigV4Transport`. It is
-gated on `#if canImport(CryptoKit)` — CryptoKit is Apple-platform-only, which is why
-this lives in the testing module rather than in `KeelCore`. The framework stays
-dependency-free; your app test target (and production code on Apple platforms) gains a
-reference transport at zero extra cost.
+`KeelClientSigning` ships a **real, tested SigV4 signer**: `KeelSigV4Transport`. It is
+gated on `#if canImport(CryptoKit)` — CryptoKit is Apple-platform-only, which is why the
+signer lives in its own Apple-platform library rather than in `KeelCore` (which stays
+dependency-free and Skip-transpilable). `KeelClientSigning` is a **production** module, so
+you depend on it from your shipping target — not from the test-support `KeelClientTesting`.
+Your app gains a reference transport at zero extra dependency cost.
 
 Key properties:
 - **Signs only when credentials exist.** Pass `credentials: nil` and the request goes
@@ -2263,7 +2265,7 @@ Key properties:
 
 ```swift
 import KeelCore
-import KeelClientTesting
+import KeelClientSigning
 
 // Production: credentials from your Cognito identity pool (or wherever).
 let transport = KeelSigV4Transport(
@@ -2328,6 +2330,7 @@ canonicalization bugs, wrong signed-header sets, or a broken session-token path:
 #if canImport(CryptoKit)
 import Testing
 import KeelCore
+import KeelClientSigning
 import KeelClientTesting
 
 @Test("SigV4 golden signature")
