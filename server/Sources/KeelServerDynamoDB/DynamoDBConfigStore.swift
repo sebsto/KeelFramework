@@ -1,5 +1,6 @@
 public import KeelServer
-public import KeelSotoDynamoDB
+import KeelSotoDynamoDB
+public import SotoCore
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -17,8 +18,10 @@ public struct DynamoDBConfigStore: ConfigStore {
     let dynamoDB: DynamoDB
     let tableName: String
 
-    public init(dynamoDB: DynamoDB, tableName: String) {
-        self.dynamoDB = dynamoDB
+    /// Takes an `AWSClient` for the same reason as `DynamoDBCounterStore`: the DynamoDB client
+    /// comes from Keel's internal code-generated module, so an adopting app cannot name it.
+    public init(awsClient: AWSClient, region: Region? = nil, tableName: String) {
+        self.dynamoDB = DynamoDB(client: awsClient, region: region)
         self.tableName = tableName
     }
 

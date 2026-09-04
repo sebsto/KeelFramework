@@ -1,5 +1,6 @@
 public import KeelServer
-public import KeelSotoDynamoDB
+import KeelSotoDynamoDB
+public import SotoCore
 
 /// `CounterStore` on the single Keel table.
 ///
@@ -10,8 +11,13 @@ public struct DynamoDBCounterStore: CounterStore {
     let dynamoDB: DynamoDB
     let tableName: String
 
-    public init(dynamoDB: DynamoDB, tableName: String) {
-        self.dynamoDB = dynamoDB
+    /// Takes an `AWSClient` rather than a DynamoDB client because the DynamoDB client is built
+    /// from Keel's own code-generated service module, which is internal: an adopting app cannot
+    /// name that type, so it could not call an initializer that asked for one. Pass the
+    /// `AWSClient` the rest of your Lambda already shares — it owns the connection pool — and
+    /// this store builds its own thin service wrapper over it.
+    public init(awsClient: AWSClient, region: Region? = nil, tableName: String) {
+        self.dynamoDB = DynamoDB(client: awsClient, region: region)
         self.tableName = tableName
     }
 
