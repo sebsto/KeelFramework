@@ -53,6 +53,7 @@ For background on *why* things are shaped the way they are, see
   - [Pointing the CDK construct at your executable](#pointing-the-cdk-construct-at-your-executable)
   - [DynamoDB grant for app-owned item kinds](#dynamodb-grant-for-app-owned-item-kinds)
   - [Worked example: a payment webhook and a license lookup](#worked-example-a-payment-webhook-and-a-license-lookup)
+- [Serving unmatched paths](#serving-unmatched-paths)
 
 **Part 4 — Dashboard**
 
@@ -1811,6 +1812,59 @@ A **simple** GET (a bare `fetch`, no custom headers) needs no preflight and work
 which `appRoutes` + `allowedOrigins` register for you. If you register routes by hand with
 `backend.httpApi.addRoutes(...)` instead, remember to add the matching `OPTIONS` route yourself
 (always public — the browser sends it without credentials).
+
+## Serving unmatched paths
+
+By default a request to a path Keel does not know 404s at the gateway and never reaches the
+function. That is the cheaper posture — a scanner buys no invoke on a guessed path — and it
+is the default. Omit `fallbackRoute` and nothing changes.
+
+Set it, and one catch-all `$default` route sends every unmatched request to your function
+instead: the root `/` a human gets by typing the bare hostname, a legacy path you have not
+finished retiring, anything you would rather answer with a redirect or your own branded 404
+than the gateway's. `$default` matches every method, so `ANY` handling comes for free, and it
+does not weaken your protected routes — API Gateway always prefers the more specific route, so
+a public fallback only lets unauthenticated traffic reach the function on paths that do not
+exist.
+
+```ts
+const backend = new KeelBackend(this, "Backend", {
+    appName: "myapp",
+    envName: props.envName,
+    // A redirect for a browser typing the hostname needs no authorizer in the way.
+    fallbackRoute: { public: true },
+});
+```
+
+`public: true` is right when the fallback answers anonymous browser traffic — an authorizer
+would reject a redirect or a 404 before the function saw it. Leave `public` off (the default)
+and the configured authorizer applies, same as an app route. A public fallback means every
+unmatched path now invokes the function, so keep the stage's throttling set: it is the only
+thing bounding a scanner probing made-up paths, and the construct warns you about this once at
+synth.
+
+The framework needs no Swift change: the ready-made `KeelLambda` answers unmatched paths with
+the router's own 404, a strictly better error than the gateway's. To do something else you own
+your executable already, but the router has no not-found hook — it 404s an unmatched path
+itself — so intercept **before** handing off to it, in your runtime closure:
+
+```swift
+let runtime = LambdaRuntime {
+    (event: APIGatewayV2Request, context: LambdaContext) async -> APIGatewayV2Response in
+    // Unmatched paths now reach us. Decide before the router, which would 404 them.
+    if let redirect = MyRedirect.target(for: event) {
+        return APIGatewayV2Response(
+            statusCode: .movedPermanently, headers: ["Location": redirect], body: nil)
+    }
+    let response = await router.handle(HTTPRequest(event: event), logger: context.logger)
+    return APIGatewayV2Response(
+        statusCode: response.statusCode, headers: response.headers, body: response.body)
+}
+```
+
+CORS needs nothing extra: `$default` catches `OPTIONS` on unmatched paths too, so there is no
+preflight route to register and no concrete path to add to `allowedOrigins`. The function still
+decides whether to emit CORS headers, exactly as for every other route.
 
 ---
 
