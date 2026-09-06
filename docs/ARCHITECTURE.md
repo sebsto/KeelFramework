@@ -534,6 +534,16 @@ on `bootstrap` only (nothing else has an `app` payload to hoist). Parsing is str
 the flags are lenient, because the stakes invert: a dropped flag loses one override, a
 dropped alias is a shipped client's route answering 404 — so it is logged at error level.
 
+The API registers one route per known path, so an unknown path 404s at the gateway and never
+reaches the function — that is what keeps a scanner from buying a Lambda invoke on every
+guessed path, and it is why `publicRoutes` can mean "no authorizer attached" rather than "an
+authorizer that waves it through." An app can opt out with the `fallbackRoute` prop, which
+registers API Gateway's `$default` route so unmatched requests — including the bare `/` — reach
+the function instead (for a redirect, a branded 404, a legacy path). The cost is exactly what
+the default avoids: a public fallback lets a scanner's guessed paths invoke the function, so
+only the stage throttling bounds it. It changes nothing about the protected routes — API
+Gateway prefers the more specific route, so the fallback only ever sees what matched nothing.
+
 **Why soto, code-generated.** `aws-sdk-swift`'s aws-crt TLS layer crashes at Lambda cold
 start. `scripts/generate-soto.sh` emits a minimal DynamoDB client from
 soto's generator that depends only on `SotoCore`, which keeps the binary small and the cold

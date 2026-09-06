@@ -51,6 +51,19 @@ export interface KeelAppRoute {
   readonly public?: boolean;
 }
 
+/** One catch-all route for requests that match no other route. */
+export interface KeelFallbackRoute {
+  /**
+   * Whether the fallback takes no authorizer. Defaults to `false` (the configured
+   * authorizer applies), matching `KeelAppRoute`.
+   *
+   * Set `true` when the fallback exists to answer anonymous browser traffic — a redirect or
+   * a branded 404 — since an authorizer would reject those before the function sees them.
+   * With `KeelAuth.none()` there is no authorizer either way.
+   */
+  readonly public?: boolean;
+}
+
 export interface KeelBackendProps {
   /** Short app identifier, used in resource names and defaults. Lowercase. */
   readonly appName: string;
@@ -102,6 +115,18 @@ export interface KeelBackendProps {
    * takes no auth (e.g. a payment webhook the provider calls without your credentials).
    */
   readonly appRoutes?: KeelAppRoute[];
+
+  /**
+   * Serve requests that match no other route from the app's own executable, instead of
+   * letting them 404 at the gateway. Omit it and unmatched paths never reach the function,
+   * which is the default and the cheaper posture (a scanner buys no invoke on a guessed path).
+   *
+   * Registered as API Gateway's `$default` route, so it catches every unmatched request —
+   * including the root `/` a human gets by typing the bare hostname — under every method. The
+   * app decides what to do with them in its own runtime closure, before the router (which
+   * would 404 them). See docs/INTEGRATION.md "Serving unmatched paths".
+   */
+  readonly fallbackRoute?: KeelFallbackRoute;
 
   /**
    * Path to the built `KeelLambda` zip. Defaults to the AWSLambdaBuilder plugin's output
@@ -371,7 +396,8 @@ export class KeelBackend extends Construct {
     for (const route of routes) {
       // Explicit routes rather than `ANY /{proxy+}`, so `publicRoutes` is expressed in
       // the API's own route table — public means no authorizer attached, not an
-      // authorizer that waves it through. An unknown path 404s at the gateway.
+      // authorizer that waves it through. An unknown path 404s at the gateway, unless
+      // `fallbackRoute` is set to hand unmatched paths to the function instead (below).
       // The notification route is public whatever the mode: Apple cannot authenticate,
       // and the payload's own signature is the boundary. An app route carries its own
       // `public` flag (defaulting to authorized).
@@ -385,6 +411,34 @@ export class KeelBackend extends Construct {
         integration,
         authorizer: isPublic ? undefined : authorizer,
       });
+    }
+
+    // Optional catch-all. `$default` matches every request that hit no route above,
+    // including the bare `/` a human gets by typing the hostname — `/{proxy+}` would miss
+    // that, since a greedy segment needs at least one path element. Two properties make it
+    // safe: API Gateway prefers the more specific route, so every explicit Keel, alias and
+    // app route keeps its own method, path and authorizer and the fallback only ever sees
+    // what matched nothing; and a public fallback lets unauthenticated traffic reach the
+    // function on paths that do not exist (where the router answers 404), never on a
+    // protected route. No CORS route is needed — `$default` covers OPTIONS on unmatched
+    // paths too — and no collision guard, since `$default` cannot duplicate a `METHOD /path`.
+    if (props.fallbackRoute) {
+      new apigwv2.HttpRoute(this, "FallbackRoute", {
+        httpApi: this.httpApi,
+        routeKey: apigwv2.HttpRouteKey.DEFAULT,
+        integration,
+        authorizer: props.fallbackRoute.public ? undefined : authorizer,
+      });
+      if (props.fallbackRoute.public) {
+        // A public fallback means every unmatched path now invokes the function, so
+        // throttling is the only thing bounding a scanner. Say it once at synth rather
+        // than leave it to be discovered on a bill.
+        cdk.Annotations.of(this).addWarningV2(
+          "keel:public-fallback-route",
+          "A public fallbackRoute sends every unmatched path to the function unauthenticated. " +
+            "Only the stage's throttling bounds a scanner probing made-up paths — keep it set.",
+        );
+      }
     }
 
     // OPTIONS preflight routes are registered only when allowedOrigins is set. The Lambda

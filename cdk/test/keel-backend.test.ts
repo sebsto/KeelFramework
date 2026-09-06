@@ -622,3 +622,88 @@ describe("KeelBackend appRoutes", () => {
     expect(routes.some((r) => String(r.Properties.RouteKey).includes("checkout"))).toBe(false);
   });
 });
+
+describe("KeelBackend fallbackRoute", () => {
+  const coreRouteKeys = ["GET /v1/bootstrap", "POST /v1/ping", "GET /v1/stats"];
+
+  test("default: no $default route, and the core route set is unchanged", () => {
+    const { template } = synth();
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    const keys = routes.map((r) => String(r.Properties.RouteKey));
+    expect(keys.some((k) => k === "$default")).toBe(false);
+    for (const key of coreRouteKeys) {
+      expect(keys).toContain(key);
+    }
+    // Exactly the core routes, nothing extra registered by the absent prop.
+    expect(keys.sort()).toEqual([...coreRouteKeys].sort());
+  });
+
+  test("fallbackRoute: {} registers exactly one $default route on the Keel function", () => {
+    const { template } = synth({ fallbackRoute: {} });
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    const defaults = routes.filter((r) => String(r.Properties.RouteKey) === "$default");
+    expect(defaults).toHaveLength(1);
+    // Same integration string as a core route — one function serves both.
+    const target = (r: (typeof routes)[number]) => JSON.stringify(r.Properties.Target);
+    const ping = routes.find((r) => String(r.Properties.RouteKey) === "POST /v1/ping");
+    expect(target(defaults[0])).toEqual(target(ping!));
+  });
+
+  test("public fallback under sharedSecret takes no authorizer while a core route keeps one", () => {
+    const { template } = synth({
+      auth: KeelAuth.sharedSecret({ parameterName: "/keel/myapp/dev/api-secret" }),
+      fallbackRoute: { public: true },
+    });
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    const byKey = Object.fromEntries(routes.map((r) => [r.Properties.RouteKey, r.Properties]));
+    expect(byKey["$default"].AuthorizationType ?? "NONE").toBe("NONE");
+    expect(byKey["POST /v1/ping"].AuthorizationType).toBe("CUSTOM");
+  });
+
+  test("a non-public fallback under sharedSecret carries the authorizer", () => {
+    const { template } = synth({
+      auth: KeelAuth.sharedSecret({ parameterName: "/keel/myapp/dev/api-secret" }),
+      fallbackRoute: {},
+    });
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
+    const byKey = Object.fromEntries(routes.map((r) => [r.Properties.RouteKey, r.Properties]));
+    expect(byKey["$default"].AuthorizationType).toBe("CUSTOM");
+  });
+
+  test("a public fallback warns at synth that only throttling bounds a scanner", () => {
+    const { stack } = synth({ fallbackRoute: { public: true } });
+    Annotations.fromStack(stack).hasWarning(
+      "*",
+      Match.stringLikeRegexp("public fallbackRoute"),
+    );
+  });
+
+  test("a non-public fallback does not warn", () => {
+    const { stack } = synth({ fallbackRoute: {} });
+    const warnings = Annotations.fromStack(stack).findWarning(
+      "*",
+      Match.stringLikeRegexp("fallbackRoute"),
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  test("the fallback adds no OPTIONS route, and the per-path preflight set is unchanged", () => {
+    const withFallback = synth({
+      allowedOrigins: ["https://example.com"],
+      fallbackRoute: {},
+    }).template;
+    const withoutFallback = synth({
+      allowedOrigins: ["https://example.com"],
+    }).template;
+
+    const optionsKeys = (t: typeof withFallback) =>
+      Object.values(t.findResources("AWS::ApiGatewayV2::Route"))
+        .map((r) => String(r.Properties.RouteKey))
+        .filter((k) => k.startsWith("OPTIONS"))
+        .sort();
+
+    // $default covers OPTIONS on unmatched paths, so the fallback needs no preflight route.
+    expect(optionsKeys(withFallback)).toEqual(optionsKeys(withoutFallback));
+    expect(optionsKeys(withFallback).some((k) => k === "OPTIONS $default")).toBe(false);
+  });
+});
