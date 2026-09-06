@@ -657,6 +657,9 @@ describe("KeelBackend fallbackRoute", () => {
     const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route"));
     const byKey = Object.fromEntries(routes.map((r) => [r.Properties.RouteKey, r.Properties]));
     expect(byKey["$default"].AuthorizationType ?? "NONE").toBe("NONE");
+    // #37 asks that the public $default route have no AuthorizerId at all: AuthorizationType
+    // alone would still read NONE if a stray id were attached, so assert the id is absent too.
+    expect(byKey["$default"].AuthorizerId).toBeUndefined();
     expect(byKey["POST /v1/ping"].AuthorizationType).toBe("CUSTOM");
   });
 
