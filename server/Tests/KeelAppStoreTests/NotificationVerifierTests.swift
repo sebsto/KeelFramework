@@ -3,6 +3,7 @@ import Foundation
 import HTTPTypes
 import KeelAppStoreRouter
 import KeelAppStoreTesting
+import KeelRouter
 import Logging
 import Routing
 import Testing
@@ -62,7 +63,7 @@ struct NotificationVerifierTests {
     @Test("A verified notification reaches the handler and the route acks 200")
     func mountVerifiedReachesHandlerAndAcks() async throws {
         let handled = Handled()
-        let builder = HTTPRouterBuilder()
+        let builder = KeelHTTPRouterBuilder()
         builder.mount(appStore: verifier(), logger: Self.quietLogger()) { notification in
             await handled.record(notification.notificationType.rawValue)
         }
@@ -79,7 +80,7 @@ struct NotificationVerifierTests {
     @Test("A bad signature returns non-2xx and the handler is never called")
     func mountBadSignatureDoesNotCallHandler() async throws {
         let handled = Handled()
-        let builder = HTTPRouterBuilder()
+        let builder = KeelHTTPRouterBuilder()
         builder.mount(appStore: verifier(), logger: Self.quietLogger()) { notification in
             await handled.record(notification.notificationType.rawValue)
         }
@@ -120,8 +121,10 @@ private actor Handled {
     func record(_ type: String) { types.append(type) }
 }
 
-/// Build a `POST /v1/appstore-notification` `HTTPRequest` carrying `{ "signedPayload": … }`.
-private func makeNotificationPOST(signedPayload: String) throws -> Routing.HTTPRequest {
+/// Build a `POST /v1/appstore-notification` `KeelHTTPRequest` carrying `{ "signedPayload": … }`,
+/// shaped as API Gateway sends an explicit route: the path is in `requestContext.http.path` and
+/// `pathParameters` is absent.
+private func makeNotificationPOST(signedPayload: String) throws -> KeelHTTPRequest {
     let path = "/v1/appstore-notification"
     let bodyJSON = try String(
         decoding: JSONSerialization.data(withJSONObject: ["signedPayload": signedPayload]),
@@ -140,7 +143,6 @@ private func makeNotificationPOST(signedPayload: String) throws -> Routing.HTTPR
           "rawQueryString": "",
           "isBase64Encoded": false,
           "headers": { "host": "test.example.com", "content-type": "application/json" },
-          "pathParameters": { "proxy": "\(path.dropFirst())" },
           "body": "\(escapedBody)",
           "requestContext": {
             "accountId": "123456789012",
@@ -162,5 +164,5 @@ private func makeNotificationPOST(signedPayload: String) throws -> Routing.HTTPR
         }
         """
     let event = try JSONDecoder().decode(APIGatewayV2Request.self, from: Data(json.utf8))
-    return Routing.HTTPRequest(event: event)
+    return KeelHTTPRequest(event: event)
 }

@@ -1,6 +1,7 @@
 import AWSLambdaEvents
 import HTTPTypes
 public import KeelAppStore
+public import KeelRouter
 import KeelServer
 public import Logging
 public import Routing
@@ -51,8 +52,8 @@ public struct KeelAppStoreRouter: Sendable {
         self.logger = logger
     }
 
-    func register(on builder: HTTPRouterBuilder) {
-        builder.on(Routing.HTTPRequest.post(Self.notificationPath)) { request, _ in
+    func register(on builder: KeelHTTPRouterBuilder) {
+        builder.on(KeelHTTPRequest.post(Self.notificationPath)) { request, _ in
             await self.handle(request)
         }
     }
@@ -67,7 +68,7 @@ public struct KeelAppStoreRouter: Sendable {
         var ok = true
     }
 
-    private func handle(_ request: Routing.HTTPRequest) async -> RouteResponse {
+    private func handle(_ request: KeelHTTPRequest) async -> RouteResponse {
         let signedPayload: String
         do {
             signedPayload = try WireJSON.decoder()
@@ -115,7 +116,7 @@ public struct KeelAppStoreRouter: Sendable {
     }
 }
 
-extension HTTPRouterBuilder {
+extension KeelHTTPRouterBuilder {
     /// Add the App Store notification endpoint to this builder, beside `mount(keel:)`'s three.
     ///
     /// The helper owns the path, the raw-body read, the verify call, the failure→status

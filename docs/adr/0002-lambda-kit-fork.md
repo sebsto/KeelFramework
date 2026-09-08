@@ -37,6 +37,21 @@ macro does not model. (An earlier draft floated it for the IAP entitlement items
 removed from the framework — `KeelAppStore` verifies App Store paperwork and stores nothing —
 so the macro has no candidate left here.)
 
+## Dispatching on the explicit-route path
+
+lambda-kit's `Routing` router is generic over a `Routable` protocol; the `{proxy+}` assumption
+lives only in its `HTTPRequest` convenience type, whose `routingKey` reads `pathParameters["proxy"]`.
+API Gateway fills that parameter only for a greedy `/{proxy+}` route, and `KeelBackend` declares
+**explicit** routes so `publicRoutes` can mean "no authorizer attached" — so on a deployed Keel
+function that parameter is absent and every request would collapse to the method alone.
+
+Keel therefore supplies its own `Routable`, `KeelHTTPRequest` (in `KeelRouter`), whose
+`routingKey` reads `context.http.path` — the path the gateway populates for an explicit route —
+and specialises the *same* generic `Router`/`RouterBuilder` (`KeelHTTPRouter` /
+`KeelHTTPRouterBuilder`), reusing the trie engine, middleware and body decoding unchanged. This
+also means `KeelRouter` names the `TrieRouterBuilder` engine directly, so it takes a direct
+`routing-kit` dependency (the same package and exact tag lambda-kit already resolves).
+
 ## App-side compatibility
 
 An app that mounts Keel beside its own Lambdas (via `builder.mount(keel:)`) shares the same
@@ -45,6 +60,9 @@ SPM build graph and therefore **must resolve the same two pins**:
 - `swift-aws-lambda-runtime` on the **3.x major** (`3.0.0-rc1` today).
 - `lambda-kit` at **exact version `0.1.0`** — or leave its `Package.swift` silent on
   `lambda-kit` and let SPM inherit Keel's pin, which is the simpler path.
+- `routing-kit` at **exact `5.0.0-beta.2`** — Keel now depends on it directly (see
+  "Dispatching on the explicit-route path"), but lambda-kit already resolves the same tag,
+  so an app inherits one pin, not a conflicting second one.
 
 A conflicting declaration causes SPM to reject the build. See
 [docs/INTEGRATION.md](../INTEGRATION.md) for the setup steps.
@@ -73,8 +91,10 @@ Any one of these retires this ADR:
    `from: "3.0.0"` and re-resolve.
 3. Either becomes unmaintained → replace `Routing` with the ~150-line router. This is the
    reason `KeelServer` never imports `Routing`: the handlers are plain
-   `(Request) async throws -> Response` functions and only `KeelLambda` knows the router
-   exists, so swapping it touches one file.
+   `(Request) async throws -> Response` functions that know nothing about the router. The
+   router seam lives in `KeelRouter` (`KeelHTTPRequest` plus the `mount(keel:)` builder) and
+   `KeelAppStoreRouter`, so swapping the engine touches those and the `KeelLambda` executable,
+   not the handlers.
 
 Point 3 is the load-bearing mitigation. The fork is a convenience, not a dependency the
 design rests on.

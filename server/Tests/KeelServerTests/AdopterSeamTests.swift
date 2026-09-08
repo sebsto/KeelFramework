@@ -42,7 +42,7 @@ struct AdopterSeamTests {
 
     @Test("An adopter mounts Keel and its own route on one builder, using only public API")
     func adopterBuildsRouterViaPublicSeam() async throws {
-        let builder = HTTPRouterBuilder()
+        let builder = KeelHTTPRouterBuilder()
         builder.mount(keel: Self.makeKeelRouter())  // the documented, importable seam
         builder.get("/artwork") { _, _ in  // the adopter's own route
             RouteResponse.json(["status": "ok"], statusCode: .ok)
@@ -59,11 +59,11 @@ struct AdopterSeamTests {
         #expect(keelResp.statusCode.code == 200)
     }
 
-    /// Minimal API Gateway V2 GET event, decoded to a `Routing.HTTPRequest` the way the
-    /// Lambda runtime constructs one. Kept local so this file depends on nothing but the
-    /// public libraries above.
-    private static func makeGetRequest(path: String) throws -> Routing.HTTPRequest {
-        let proxy = path.hasPrefix("/") ? String(path.dropFirst()) : path
+    /// Minimal API Gateway V2 GET event for an **explicit** route, decoded to a
+    /// `KeelHTTPRequest` the way the Lambda runtime constructs one: the path lives in
+    /// `requestContext.http.path`, and `pathParameters` is absent. Kept local so this file
+    /// depends on nothing but the public libraries above.
+    private static func makeGetRequest(path: String) throws -> KeelHTTPRequest {
         let json = """
             {
               "version": "2.0",
@@ -72,7 +72,6 @@ struct AdopterSeamTests {
               "rawQueryString": "",
               "isBase64Encoded": false,
               "headers": { "host": "test.example.com" },
-              "pathParameters": { "proxy": "\(proxy)" },
               "requestContext": {
                 "accountId": "123456789012",
                 "apiId": "test",
@@ -93,6 +92,6 @@ struct AdopterSeamTests {
             }
             """
         let event = try JSONDecoder().decode(APIGatewayV2Request.self, from: Data(json.utf8))
-        return Routing.HTTPRequest(event: event)
+        return KeelHTTPRequest(event: event)
     }
 }

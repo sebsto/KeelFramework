@@ -1586,26 +1586,34 @@ service shapes, not a second signing/HTTP stack.
 Then the three steps:
 
 ```swift
-import KeelRouter   // KeelRouter, and builder.mount(keel:)
+import KeelRouter   // KeelRouter, KeelHTTPRouterBuilder, KeelHTTPRequest, builder.mount(keel:)
 import KeelServer   // handlers, ConfigCache, the store protocols
-import Routing      // HTTPRouterBuilder
 
-let builder = HTTPRouterBuilder()
+let builder = KeelHTTPRouterBuilder()
 
 // 1. Mount Keel's routes: /v1/bootstrap, /v1/ping, /v1/stats
 builder.mount(keel: keel)
 
 // 2. Add your own routes on the same builder
-builder.on(Routing.HTTPRequest.post("/v1/my-webhook")) { request, _ in
+builder.on(KeelHTTPRequest.post("/v1/my-webhook")) { request, _ in
     try await MyWebhookHandler().handle(request)
 }
-builder.on(Routing.HTTPRequest.get("/v1/my-thing")) { request, _ in
+builder.on(KeelHTTPRequest.get("/v1/my-thing")) { request, _ in
     try await MyThingHandler().handle(request)
 }
 
 // 3. Build once; the router serves both Keel's routes and yours
 let router = builder.build()
 ```
+
+Register routes with `KeelHTTPRequest`, not `Routing.HTTPRequest`. `KeelBackend` declares
+explicit gateway routes (so `publicRoutes` can mean "no authorizer attached"), and API Gateway
+only fills the `proxy` path parameter that `Routing.HTTPRequest` dispatches on for a greedy
+`/{proxy+}` route. `KeelHTTPRequest` dispatches on `context.http.path`, the path the gateway
+populates for an explicit route, so registration and dispatch agree. Its surface mirrors
+`Routing.HTTPRequest` — `request.event`, `request.headers`, `request.queryParameters`,
+`request.body` all read the same — so a handler body is unchanged; only the type name in the
+registration and in `router.handle(...)` differs.
 
 You construct the `KeelRouter` yourself from its public initializer, so you own
 every dependency it takes. The types you need are all public library API:
@@ -1684,7 +1692,7 @@ import MyAppBackendCore
 
 @main
 struct MyAppLambda: LambdaHandler {
-    private let router: HTTPRouter
+    private let router: KeelHTTPRouter
 
     init() throws {
         let settings = try Settings()
@@ -1713,7 +1721,7 @@ struct MyAppLambda: LambdaHandler {
             corsConfig: CORSConfig(allowedOrigins: settings.allowedOrigins),
             logger: logger)
 
-        let builder = HTTPRouterBuilder()
+        let builder = KeelHTTPRouterBuilder()
         builder.mount(keel: keel)   // Keel's routes on the shared builder
 
         // 2. The app's own dependencies. Its store uses the upstream soto
@@ -1726,17 +1734,17 @@ struct MyAppLambda: LambdaHandler {
         let stripeSecret = try await SSMClient().getParameter(name: settings.stripeWebhookSecretPath)
 
         // 4. Register app routes alongside Keel's
-        builder.on(Routing.HTTPRequest.post("/v1/checkout")) { request, _ in
+        builder.on(KeelHTTPRequest.post("/v1/checkout")) { request, _ in
             try await CheckoutHandler(store: licenseStore).handle(request)
         }
         // Stripe sends raw bytes; the signature header is verified against the body
-        builder.on(Routing.HTTPRequest.post("/v1/stripe-webhook")) { request, _ in
+        builder.on(KeelHTTPRequest.post("/v1/stripe-webhook")) { request, _ in
             try await StripeWebhookHandler(
                 store: licenseStore,
                 webhookSecret: stripeSecret
             ).handle(request)
         }
-        builder.on(Routing.HTTPRequest.get("/v1/license")) { request, _ in
+        builder.on(KeelHTTPRequest.get("/v1/license")) { request, _ in
             try await LicenseHandler(store: licenseStore).handle(request)
         }
 
@@ -1746,7 +1754,7 @@ struct MyAppLambda: LambdaHandler {
     func handle(
         _ event: APIGatewayV2Request, context: LambdaContext
     ) async throws -> APIGatewayV2Response {
-        let response = await router.handle(HTTPRequest(event: event), logger: context.logger)
+        let response = await router.handle(KeelHTTPRequest(event: event), logger: context.logger)
         return APIGatewayV2Response(
             statusCode: response.statusCode,
             headers: response.headers,
@@ -1755,10 +1763,9 @@ struct MyAppLambda: LambdaHandler {
 
     static func main() async throws {
         let handler = try await MyAppLambda()
-        let runtime = LambdaRuntime(
-            encoder: LambdaJSONOutputEncoder<APIGatewayV2Response>(JSONEncoder()),
-            decoder: ProxySynthesizingDecoder(),
-            body: handler.handle)
+        // Default JSON decoder: KeelHTTPRequest dispatches on context.http.path, so no custom
+        // decoder is needed to make the explicit gateway routes reachable.
+        let runtime = LambdaRuntime(body: handler.handle)
         try await runtime.run()
     }
 }
