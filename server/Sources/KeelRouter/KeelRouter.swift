@@ -48,10 +48,11 @@ public struct CORSConfig: Sendable {
 // MARK: - KeelRouter
 
 /// The framework's route table: the three canonical endpoints plus any declared aliases, ready
-/// to mount on a lambda-kit `HTTPRouterBuilder`.
+/// to mount on a `KeelHTTPRouterBuilder` (Keel's specialisation of lambda-kit's generic router
+/// on `KeelHTTPRequest`, which dispatches on the gateway's explicit-route path — see that type).
 ///
 /// ```swift
-/// let builder = HTTPRouterBuilder()
+/// let builder = KeelHTTPRouterBuilder()
 /// builder.mount(keel: keel)
 /// builder.get("/artwork") { … }   // the app's own routes, same function
 /// let router = builder.build()
@@ -114,7 +115,7 @@ public struct KeelRouter: Sendable {
     }
 
     /// Register every route on `builder`. Called via `builder.mount(keel:)`.
-    func register(on builder: HTTPRouterBuilder) {
+    func register(on builder: KeelHTTPRouterBuilder) {
         register(
             route: .bootstrap, at: Keel.Route.bootstrap.rawValue, envelope: .standard, on: builder)
         register(route: .ping, at: Keel.Route.ping.rawValue, envelope: .standard, on: builder)
@@ -144,7 +145,7 @@ public struct KeelRouter: Sendable {
         route: Keel.Route,
         at path: String,
         envelope: AliasRoutes.Envelope,
-        on builder: HTTPRouterBuilder
+        on builder: KeelHTTPRouterBuilder
     ) {
         switch route {
         case .bootstrap:
@@ -152,7 +153,7 @@ public struct KeelRouter: Sendable {
                 try await self.handleBootstrap(request, envelope: envelope)
             }
         case .ping:
-            builder.on(Routing.HTTPRequest.post(path)) { request, _ in
+            builder.on(KeelHTTPRequest.post(path)) { request, _ in
                 await self.handlePing(request)
             }
         case .stats:
@@ -186,9 +187,9 @@ public struct KeelRouter: Sendable {
     /// browser's capitalized `Origin` header. This is unlike `KeelAuthorizerLambda`, which reads
     /// the raw `[String: String]` authorizer event and therefore needs its dual-case lookup.
     private func registerPreflight(
-        at path: String, methods: String, on builder: HTTPRouterBuilder
+        at path: String, methods: String, on builder: KeelHTTPRouterBuilder
     ) {
-        builder.on(Routing.HTTPRequest.route(method: "OPTIONS", path: path)) { request, _ in
+        builder.on(KeelHTTPRequest.route(method: "OPTIONS", path: path)) { request, _ in
             guard let matched = self.corsConfig.match(request.headers["origin"]) else {
                 // Not in the allowlist: refuse without leaking which origins are allowed.
                 return .empty(statusCode: .forbidden)
@@ -207,7 +208,7 @@ public struct KeelRouter: Sendable {
     // MARK: - Edge adapters
 
     private func handleBootstrap(
-        _ request: Routing.HTTPRequest, envelope: AliasRoutes.Envelope
+        _ request: KeelHTTPRequest, envelope: AliasRoutes.Envelope
     ) async throws -> RouteResponse {
         let response = await bootstrap.handle(
             BootstrapHandler.Request(query: request.event.queryStringParameters))
@@ -221,7 +222,7 @@ public struct KeelRouter: Sendable {
         }
     }
 
-    private func handlePing(_ request: Routing.HTTPRequest) async -> RouteResponse {
+    private func handlePing(_ request: KeelHTTPRequest) async -> RouteResponse {
         let cors = corsHeaders(for: request)
         let body: PingRequest
         do {
@@ -241,7 +242,7 @@ public struct KeelRouter: Sendable {
         }
     }
 
-    private func handleStats(_ request: Routing.HTTPRequest) async -> RouteResponse {
+    private func handleStats(_ request: KeelHTTPRequest) async -> RouteResponse {
         var headers = corsHeaders(for: request)
         do {
             headers["Cache-Control"] = "public, max-age=\(statsCacheSeconds)"
@@ -264,7 +265,7 @@ public struct KeelRouter: Sendable {
     /// CORS headers for a request whose `Origin` header is in the allowlist.
     /// Returns an empty dict when CORS is disabled or the origin is not allowed —
     /// callers merge this into their own response headers.
-    private func corsHeaders(for request: Routing.HTTPRequest) -> [String: String] {
+    private func corsHeaders(for request: KeelHTTPRequest) -> [String: String] {
         guard let matched = corsConfig.match(request.headers["origin"]) else { return [:] }
         return [
             "Access-Control-Allow-Origin": matched,
@@ -281,7 +282,7 @@ public struct KeelRouter: Sendable {
     }
 }
 
-extension HTTPRouterBuilder {
+extension KeelHTTPRouterBuilder {
     /// Add the Keel endpoints to this builder, beside whatever routes the app registers itself.
     public func mount(keel: KeelRouter) {
         keel.register(on: self)

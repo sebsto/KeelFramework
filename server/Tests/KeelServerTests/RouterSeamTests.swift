@@ -5,14 +5,15 @@ import KeelServerTesting
 import Logging
 import Routing
 import Testing
+
 @testable import KeelRouter
 @testable import KeelServer
 
 /// Tests for the app-owned-routes seam: an app can register routes alongside Keel's on
-/// the same `HTTPRouterBuilder`, and both kinds of routes are served correctly.
+/// the same `KeelHTTPRouterBuilder`, and both kinds of routes are served correctly.
 ///
 /// The seam itself is `builder.mount(keel:)` followed by arbitrary `builder.get(...)` calls,
-/// all collected by the same `HTTPRouterBuilder` and served by the resulting `HTTPRouter`.
+/// all collected by the same `KeelHTTPRouterBuilder` and served by the resulting `KeelHTTPRouter`.
 /// This is the pattern documented in `docs/INTEGRATION.md §"App-owned routes"`.
 ///
 /// The test operates entirely with in-memory stores — no DynamoDB, no Lambda runtime.
@@ -43,7 +44,7 @@ struct RouterSeamTests {
 
     @Test("Keel routes are reachable on a builder that also has an app route")
     func keelRoutesReachableAlongsideAppRoute() async throws {
-        let builder = HTTPRouterBuilder()
+        let builder = KeelHTTPRouterBuilder()
         builder.mount(keel: Self.makeKeelRouter())
         // An app-specific route registered after mounting Keel — must not disturb Keel's table
         builder.get("/artwork") { _, _ in
@@ -60,7 +61,7 @@ struct RouterSeamTests {
 
     @Test("App-owned route is reachable when mounted alongside Keel routes")
     func appRouteReachableAlongsideKeelRoutes() async throws {
-        let builder = HTTPRouterBuilder()
+        let builder = KeelHTTPRouterBuilder()
         builder.mount(keel: Self.makeKeelRouter())
         builder.get("/artwork") { _, _ in
             RouteResponse.json(["name": "Mona Lisa"], statusCode: .ok)
@@ -75,7 +76,7 @@ struct RouterSeamTests {
 
     @Test("App-owned route does not shadow or disturb Keel's bootstrap route")
     func appRouteDoesNotShadowBootstrap() async throws {
-        let builder = HTTPRouterBuilder()
+        let builder = KeelHTTPRouterBuilder()
         builder.mount(keel: Self.makeKeelRouter())
         // A separate app route on a different path — must not collide
         builder.get("/v1/my-feature") { _, _ in
@@ -96,7 +97,7 @@ struct RouterSeamTests {
 
     @Test("Multiple app-owned routes coexist and each is independently reachable")
     func multipleAppRoutesCoexist() async throws {
-        let builder = HTTPRouterBuilder()
+        let builder = KeelHTTPRouterBuilder()
         builder.mount(keel: Self.makeKeelRouter())
         // Three app routes representative of a typical payment integration
         builder.get("/artwork") { _, _ in
@@ -123,20 +124,39 @@ struct RouterSeamTests {
             logger: Logger(label: "t"))
         #expect(statsResp.statusCode.code == 200)
     }
+
+    // MARK: - #39 regression
+
+    @Test("An explicit-route event with NO proxy path parameter reaches its handler")
+    func explicitRouteEventReachesHandler() async throws {
+        // The invariant: a request whose path lives only in `requestContext.http.path`, with
+        // `pathParameters` absent — the exact shape API Gateway sends for an explicit route —
+        // must reach its handler. `KeelHTTPRequest` dispatches on `context.http.path`, so it
+        // does. This is the router-level check the other suites cannot make when they supply a
+        // proxy parameter, and it is the guard for issue #39.
+        let builder = KeelHTTPRouterBuilder()
+        builder.mount(keel: Self.makeKeelRouter())
+        let router = builder.build()
+
+        let request = try makeGETRequest(path: "/v1/stats")
+        // Guard the fixture itself: with a proxy parameter present the assertion below would
+        // pass without proving anything about `context.http.path`-based dispatch.
+        #expect(request.event.pathParameters["proxy"] == nil)
+        #expect(request.event.context.http.path == "/v1/stats")
+
+        let resp = await router.handle(request, logger: Logger(label: "t"))
+        #expect(resp.statusCode.code == 200)
+    }
 }
 
 // MARK: - Helpers
 
-/// Build a GET `HTTPRequest` for a given path by decoding a minimal API Gateway V2
-/// JSON event. This mirrors how the Lambda runtime constructs requests from real
-/// API Gateway payloads — the router's `routingKey` computation reads `pathParameters["proxy"]`,
-/// which the `ProxySynthesizingDecoder` in `KeelLambda` normally fills in from `rawPath`.
-/// Here we fill it directly in the JSON payload.
-private func makeGETRequest(path: String) throws -> Routing.HTTPRequest {
-    // Strip the leading "/" for the proxy parameter value — API Gateway sets
-    // the "proxy" parameter to the path without the leading slash.
-    let proxy = path.hasPrefix("/") ? String(path.dropFirst()) : path
-
+/// Build a GET `KeelHTTPRequest` for a given path by decoding a minimal API Gateway V2
+/// JSON event shaped the way the gateway sends one for an **explicit** route: `pathParameters`
+/// is absent, and the path lives only in `requestContext.http.path`. This is precisely the
+/// shape that collapsed the lambda-kit routing key to the method alone (#39); `KeelHTTPRequest`
+/// dispatches on `context.http.path`, so the request reaches its handler.
+private func makeGETRequest(path: String) throws -> KeelHTTPRequest {
     let json = """
         {
           "version": "2.0",
@@ -145,7 +165,6 @@ private func makeGETRequest(path: String) throws -> Routing.HTTPRequest {
           "rawQueryString": "",
           "isBase64Encoded": false,
           "headers": { "host": "test.example.com" },
-          "pathParameters": { "proxy": "\(proxy)" },
           "requestContext": {
             "accountId": "123456789012",
             "apiId": "test",
@@ -166,5 +185,5 @@ private func makeGETRequest(path: String) throws -> Routing.HTTPRequest {
         }
         """
     let event = try JSONDecoder().decode(APIGatewayV2Request.self, from: Data(json.utf8))
-    return Routing.HTTPRequest(event: event)
+    return KeelHTTPRequest(event: event)
 }

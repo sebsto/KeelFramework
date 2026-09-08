@@ -153,6 +153,11 @@ let package = Package(
         // cannot change what we build; the pin is temporary — see
         // docs/adr/0002-lambda-kit-fork.md for the exit criteria.
         .package(url: "https://github.com/sebsto/lambda-kit.git", exact: "0.1.0"),
+        // lambda-kit's `Routing` router is generic over its engine; `KeelRouter` names the
+        // `TrieRouterBuilder` engine directly to specialise the router on `KeelHTTPRequest`
+        // (see Sources/KeelRouter/KeelHTTPRequest.swift). lambda-kit already resolves this same
+        // package at the same exact tag, so this direct edge adds a name, not a new checkout.
+        .package(url: "https://github.com/vapor/routing-kit.git", exact: "5.0.0-beta.2"),
         // Soto core only: the DynamoDB client is code-generated into
         // server/Sources/Soto/DynamoDB by scripts/generate-soto.sh. aws-sdk-swift is
         // deliberately not used — its aws-crt TLS layer crashes at Lambda cold start
@@ -239,6 +244,7 @@ let package = Package(
             dependencies: [
                 "KeelServer",
                 .product(name: "Routing", package: "lambda-kit"),
+                .product(name: "RoutingKit", package: "routing-kit"),
                 .product(name: "AWSLambdaEvents", package: "swift-aws-lambda-events"),
                 .product(name: "Logging", package: "swift-log"),
             ],
@@ -304,6 +310,7 @@ let package = Package(
             dependencies: [
                 "KeelAppStore",
                 "KeelServer",
+                "KeelRouter",
                 .product(name: "Routing", package: "lambda-kit"),
                 .product(name: "AWSLambdaEvents", package: "swift-aws-lambda-events"),
                 .product(name: "Logging", package: "swift-log"),
@@ -317,6 +324,7 @@ let package = Package(
                 "KeelAppStore",
                 "KeelAppStoreTesting",
                 "KeelAppStoreRouter",
+                "KeelRouter",
                 "KeelServer",
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "X509", package: "swift-certificates"),

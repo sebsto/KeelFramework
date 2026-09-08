@@ -58,7 +58,7 @@ Terminal B: the checks below. The local server takes API Gateway *event JSON* on
 | ✅ | ☐ | Ping counts | send `server/events/ping.json` twice, then `server/events/stats.json` | stats body: `installs: 2`, today's `dau` point = 2, version `1.2.0` present |
 | ✅ | ☐ | Ping validation | send `server/events/ping-bad.json` | 400, `"code":"validation_error"`, message names `appVersion` but never echoes the bad value |
 | ✅ | ☐ | Flattened alias | restart Terminal A with `ALIAS_ROUTES="/station=bootstrap.flattened"` in the env, send `server/events/station.json` | 200; top-level keys, no `app` key |
-| ✅ | ☐ | 404 fallback | edit a copy of bootstrap.json with `"proxy": "nope"` | 404 `{"error":"Not found"}` |
+| ✅ | ☐ | 404 fallback | edit a copy of bootstrap.json so `requestContext.http.path` is `/nope` | 404 `{"error":"Not found"}` |
 | ✅ | ☐ | Missing TABLE_NAME fails loudly | `swift run KeelLambda` with no env | process exits with `missingTableName`, never serves |
 
 Notes:

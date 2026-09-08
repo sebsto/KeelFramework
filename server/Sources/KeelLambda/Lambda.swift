@@ -25,7 +25,7 @@ import Foundation
 /// change without a deploy (`docs/ARCHITECTURE.md` §7).
 @main
 struct KeelLambda: LambdaHandler {
-    private let router: HTTPRouter
+    private let router: KeelHTTPRouter
 
     init() throws {
         let settings = try Settings()
@@ -42,7 +42,7 @@ struct KeelLambda: LambdaHandler {
     func handle(
         _ event: APIGatewayV2Request, context: LambdaContext
     ) async throws -> APIGatewayV2Response {
-        let response = await router.handle(HTTPRequest(event: event), logger: context.logger)
+        let response = await router.handle(KeelHTTPRequest(event: event), logger: context.logger)
         return APIGatewayV2Response(
             statusCode: response.statusCode,
             headers: response.headers,
@@ -51,14 +51,10 @@ struct KeelLambda: LambdaHandler {
 
     static func main() async throws {
         let handler = try KeelLambda()
-        // The custom decoder is load-bearing: lambda-kit's router keys on the `proxy` path
-        // parameter, which API Gateway sets only on `{proxy+}` routes. Keel's CDK declares
-        // *explicit* routes — that is what makes per-route auth (`publicRoutes`) expressible —
-        // so the decoder synthesizes `proxy` from `rawPath` before the event is typed.
-        let runtime = LambdaRuntime(
-            encoder: LambdaJSONOutputEncoder<APIGatewayV2Response>(JSONEncoder()),
-            decoder: ProxySynthesizingDecoder(),
-            body: handler.handle)
+        // No custom decoder: `KeelHTTPRequest` dispatches on `context.http.path`, the path API
+        // Gateway populates for the explicit routes Keel's CDK declares, so the event is typed
+        // straight from the payload (default JSON decoder) with full fidelity.
+        let runtime = LambdaRuntime(body: handler.handle)
         try await runtime.run()
     }
 
@@ -75,7 +71,7 @@ struct KeelLambda: LambdaHandler {
     ///
     /// ```swift
     /// let keel = KeelRouter(bootstrap: …, ping: …, stats: …, corsConfig: …, logger: logger)
-    /// let builder = HTTPRouterBuilder()
+    /// let builder = KeelHTTPRouterBuilder()
     /// builder.mount(keel: keel)
     /// builder.get("/v1/my-route") { request, _ in … }
     /// let router = builder.build()
@@ -89,7 +85,7 @@ struct KeelLambda: LambdaHandler {
     ///   - logger: The function logger; entries are tagged with the route that produced them.
     /// - Returns: A configured builder with all Keel routes (and the App Store notification
     ///   route, when enabled) already mounted. Register additional routes, then call `.build()`.
-    static func makeRouterBuilder(settings: Settings, logger: Logger) -> HTTPRouterBuilder {
+    static func makeRouterBuilder(settings: Settings, logger: Logger) -> KeelHTTPRouterBuilder {
         let counters: any CounterStore
         let configs: any ConfigStore
         #if DEBUG
@@ -129,7 +125,7 @@ struct KeelLambda: LambdaHandler {
             bootstrapCacheSeconds: settings.configTTLSeconds,
             logger: logger)
 
-        let builder = HTTPRouterBuilder()
+        let builder = KeelHTTPRouterBuilder()
         builder.mount(keel: keel)
 
         if let appStore = settings.appStoreNotifications {
