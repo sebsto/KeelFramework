@@ -1602,9 +1602,35 @@ builder.on(KeelHTTPRequest.get("/v1/my-thing")) { request, _ in
     try await MyThingHandler().handle(request)
 }
 
+// 2a. If a browser calls an app route cross-origin, register its CORS preflight too.
+//     mount(keel:) does this for Keel's own routes; your routes need it explicitly, or
+//     the browser's OPTIONS falls through to a 404 and it blocks the real request — the
+//     route then works from curl and fails from a page.
+let cors = CORSConfig(allowedOrigins: settings.allowedOrigins)
+builder.registerAppPreflight(at: "/v1/my-webhook", methods: "POST", cors: cors)
+builder.registerAppPreflight(at: "/v1/my-thing", methods: "GET", cors: cors)
+
 // 3. Build once; the router serves both Keel's routes and yours
 let router = builder.build()
 ```
+
+**Register a preflight for every app route a browser calls cross-origin.** A browser
+preflights any request carrying a non-simple header such as `Content-Type:
+application/json`, so a bare `builder.on(...POST...)` with no matching
+`registerAppPreflight` answers the OPTIONS with a 404 and the browser never sends the POST.
+`methods` is the real method(s) the route serves; `OPTIONS` is appended automatically. A
+disallowed origin gets a bare 403 with no CORS header, exactly like Keel's own routes. This
+is not needed for a route only ever called server-to-server (a Stripe webhook, say) — only
+for one a page in a browser calls.
+
+**The preflight is a two-sided contract: the gateway must route `OPTIONS` to the function,
+and the function must answer it.** `registerAppPreflight` is only the Lambda half. It runs
+only if API Gateway routes the browser's `OPTIONS` to the function in the first place —
+otherwise the gateway 404s the preflight before the function is ever invoked, which is the
+same buy-button symptom this covers. So declare the app route in `KeelBackend`'s `appRoutes`
+prop with `allowedOrigins` set: that registers the gateway-side `OPTIONS` route (see the CDK
+section below). Both halves are required — the gateway route (CDK `appRoutes` + `allowedOrigins`)
+and the handler (`registerAppPreflight`) — or the preflight still 404s at the gateway.
 
 Register routes with `KeelHTTPRequest`, not `Routing.HTTPRequest`. `KeelBackend` declares
 explicit gateway routes (so `publicRoutes` can mean "no authorizer attached"), and API Gateway

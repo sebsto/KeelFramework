@@ -189,8 +189,28 @@ public struct KeelRouter: Sendable {
     private func registerPreflight(
         at path: String, methods: String, on builder: KeelHTTPRouterBuilder
     ) {
+        Self.registerPreflight(
+            at: path, methods: methods, cors: corsConfig, on: builder)
+    }
+
+    /// Register an OPTIONS handler at `path` for the CORS preflight flow.
+    ///
+    /// The handler echoes the request `Origin` only if it is in `cors`'s allowlist. An
+    /// unknown or disallowed origin returns a bare 403 with no CORS headers — the browser
+    /// sees the preflight fail and does not send the real request.
+    ///
+    /// `static` and `CORSConfig`-parameterised so an adopter registering its own routes can
+    /// attach the identical preflight (see `KeelHTTPRouterBuilder.registerAppPreflight`).
+    /// The Keel routes and an app route then share one implementation and cannot drift.
+    ///
+    /// `request.headers` is lambda-kit's case-insensitive `Headers` type (names are
+    /// normalized to lowercase on both insertion and lookup), so the lowercase `"origin"`
+    /// key matches a browser's capitalized `Origin` header.
+    static func registerPreflight(
+        at path: String, methods: String, cors: CORSConfig, on builder: KeelHTTPRouterBuilder
+    ) {
         builder.on(KeelHTTPRequest.route(method: "OPTIONS", path: path)) { request, _ in
-            guard let matched = self.corsConfig.match(request.headers["origin"]) else {
+            guard let matched = cors.match(request.headers["origin"]) else {
                 // Not in the allowlist: refuse without leaking which origins are allowed.
                 return .empty(statusCode: .forbidden)
             }
@@ -286,5 +306,28 @@ extension KeelHTTPRouterBuilder {
     /// Add the Keel endpoints to this builder, beside whatever routes the app registers itself.
     public func mount(keel: KeelRouter) {
         keel.register(on: self)
+    }
+
+    /// Register the CORS preflight (OPTIONS) handler for an app-owned route.
+    ///
+    /// `mount(keel:)` registers preflights for Keel's own routes, but an app that adds its
+    /// own routes with `builder.on(KeelHTTPRequest.post("/v1/checkout")) { ... }` gets no
+    /// preflight for them. A browser preflights any request that carries a non-simple header
+    /// such as `Content-Type: application/json`, so without this the OPTIONS falls through to
+    /// a 404 and the browser blocks the real request — the route works from curl and fails
+    /// from a page. Call this once per app route that a browser calls cross-origin:
+    ///
+    /// ```swift
+    /// let cors = CORSConfig(allowedOrigins: settings.allowedOrigins)
+    /// builder.on(KeelHTTPRequest.post("/v1/checkout")) { req, _ in ... }
+    /// builder.registerAppPreflight(at: "/v1/checkout", methods: "POST", cors: cors)
+    /// ```
+    ///
+    /// `methods` is the real method(s) the route serves (e.g. `"POST"` or `"GET, POST"`);
+    /// `OPTIONS` is appended for the `Access-Control-Allow-Methods` header. An empty
+    /// allowlist (`CORSConfig.disabled`) makes every preflight answer 403, matching how the
+    /// Keel routes behave when CORS is off.
+    public func registerAppPreflight(at path: String, methods: String, cors: CORSConfig) {
+        KeelRouter.registerPreflight(at: path, methods: methods, cors: cors, on: self)
     }
 }
