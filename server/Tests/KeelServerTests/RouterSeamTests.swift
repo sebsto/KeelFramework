@@ -147,6 +147,48 @@ struct RouterSeamTests {
         let resp = await router.handle(request, logger: Logger(label: "t"))
         #expect(resp.statusCode.code == 200)
     }
+    // MARK: - App-route preflight
+
+    @Test("registerAppPreflight answers a browser OPTIONS for an app route with the CORS header")
+    func appPreflightAnsweredForAllowedOrigin() async throws {
+        let cors = CORSConfig(allowedOrigins: ["https://example.com"])
+        let builder = KeelHTTPRouterBuilder()
+        builder.mount(keel: Self.makeKeelRouter())
+        builder.on(KeelHTTPRequest.post("/v1/checkout")) { _, _ in
+            RouteResponse.json(["ok": true], statusCode: .ok)
+        }
+        builder.registerAppPreflight(at: "/v1/checkout", methods: "POST", cors: cors)
+        let router = builder.build()
+
+        let resp = await router.handle(
+            try makeOPTIONSRequest(path: "/v1/checkout", origin: "https://example.com"),
+            logger: Logger(label: "t"))
+
+        // Without this handler the OPTIONS fell through to a 404 and the browser blocked
+        // the real POST — the buy-button-does-nothing symptom this closes.
+        #expect(resp.statusCode.code == 200)
+        #expect(resp.headers["Access-Control-Allow-Origin"] == "https://example.com")
+        #expect((resp.headers["Access-Control-Allow-Methods"] ?? "").contains("POST"))
+    }
+
+    @Test("An app-route preflight from a disallowed origin is refused with 403 and no CORS header")
+    func appPreflightRefusedForDisallowedOrigin() async throws {
+        let cors = CORSConfig(allowedOrigins: ["https://example.com"])
+        let builder = KeelHTTPRouterBuilder()
+        builder.mount(keel: Self.makeKeelRouter())
+        builder.on(KeelHTTPRequest.post("/v1/checkout")) { _, _ in
+            RouteResponse.json(["ok": true], statusCode: .ok)
+        }
+        builder.registerAppPreflight(at: "/v1/checkout", methods: "POST", cors: cors)
+        let router = builder.build()
+
+        let resp = await router.handle(
+            try makeOPTIONSRequest(path: "/v1/checkout", origin: "https://evil.com"),
+            logger: Logger(label: "t"))
+
+        #expect(resp.statusCode.code == 403)
+        #expect(resp.headers["Access-Control-Allow-Origin"] == nil)
+    }
 }
 
 // MARK: - Helpers
@@ -176,6 +218,38 @@ private func makeGETRequest(path: String) throws -> KeelHTTPRequest {
             "timeEpoch": 1756792800000,
             "http": {
               "method": "GET",
+              "path": "\(path)",
+              "protocol": "HTTP/1.1",
+              "sourceIp": "127.0.0.1",
+              "userAgent": "TestSuite/1.0"
+            }
+          }
+        }
+        """
+    let event = try JSONDecoder().decode(APIGatewayV2Request.self, from: Data(json.utf8))
+    return KeelHTTPRequest(event: event)
+}
+
+private func makeOPTIONSRequest(path: String, origin: String) throws -> KeelHTTPRequest {
+    let json = """
+        {
+          "version": "2.0",
+          "routeKey": "OPTIONS \(path)",
+          "rawPath": "\(path)",
+          "rawQueryString": "",
+          "isBase64Encoded": false,
+          "headers": { "host": "test.example.com", "origin": "\(origin)" },
+          "requestContext": {
+            "accountId": "123456789012",
+            "apiId": "test",
+            "stage": "$default",
+            "domainName": "test.example.com",
+            "domainPrefix": "test",
+            "requestId": "test-request-id",
+            "time": "02/Sep/2026:10:00:00 +0000",
+            "timeEpoch": 1756792800000,
+            "http": {
+              "method": "OPTIONS",
               "path": "\(path)",
               "protocol": "HTTP/1.1",
               "sourceIp": "127.0.0.1",

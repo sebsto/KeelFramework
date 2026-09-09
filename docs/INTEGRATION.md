@@ -1602,9 +1602,26 @@ builder.on(KeelHTTPRequest.get("/v1/my-thing")) { request, _ in
     try await MyThingHandler().handle(request)
 }
 
+// 2a. If a browser calls an app route cross-origin, register its CORS preflight too.
+//     mount(keel:) does this for Keel's own routes; your routes need it explicitly, or
+//     the browser's OPTIONS falls through to a 404 and it blocks the real request — the
+//     route then works from curl and fails from a page.
+let cors = CORSConfig(allowedOrigins: settings.allowedOrigins)
+builder.registerAppPreflight(at: "/v1/my-webhook", methods: "POST", cors: cors)
+builder.registerAppPreflight(at: "/v1/my-thing", methods: "GET", cors: cors)
+
 // 3. Build once; the router serves both Keel's routes and yours
 let router = builder.build()
 ```
+
+**Register a preflight for every app route a browser calls cross-origin.** A browser
+preflights any request carrying a non-simple header such as `Content-Type:
+application/json`, so a bare `builder.on(...POST...)` with no matching
+`registerAppPreflight` answers the OPTIONS with a 404 and the browser never sends the POST.
+`methods` is the real method(s) the route serves; `OPTIONS` is appended automatically. A
+disallowed origin gets a bare 403 with no CORS header, exactly like Keel's own routes. This
+is not needed for a route only ever called server-to-server (a Stripe webhook, say) — only
+for one a page in a browser calls.
 
 Register routes with `KeelHTTPRequest`, not `Routing.HTTPRequest`. `KeelBackend` declares
 explicit gateway routes (so `publicRoutes` can mean "no authorizer attached"), and API Gateway
