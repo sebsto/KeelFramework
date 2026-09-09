@@ -1623,6 +1623,15 @@ disallowed origin gets a bare 403 with no CORS header, exactly like Keel's own r
 is not needed for a route only ever called server-to-server (a Stripe webhook, say) — only
 for one a page in a browser calls.
 
+**The preflight is a two-sided contract: the gateway must route `OPTIONS` to the function,
+and the function must answer it.** `registerAppPreflight` is only the Lambda half. It runs
+only if API Gateway routes the browser's `OPTIONS` to the function in the first place —
+otherwise the gateway 404s the preflight before the function is ever invoked, which is the
+same buy-button symptom this covers. So declare the app route in `KeelBackend`'s `appRoutes`
+prop with `allowedOrigins` set: that registers the gateway-side `OPTIONS` route (see the CDK
+section below). Both halves are required — the gateway route (CDK `appRoutes` + `allowedOrigins`)
+and the handler (`registerAppPreflight`) — or the preflight still 404s at the gateway.
+
 Register routes with `KeelHTTPRequest`, not `Routing.HTTPRequest`. `KeelBackend` declares
 explicit gateway routes (so `publicRoutes` can mean "no authorizer attached"), and API Gateway
 only fills the `proxy` path parameter that `Routing.HTTPRequest` dispatches on for a greedy
